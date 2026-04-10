@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user (Police, Driver, or Admin)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["police", "driver", "admin"] },
+        "region": { "type": "string" },
+        "zone": { "type": "string" },
+        "city": { "type": "string" },
+        "wereda": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Fine": {
+      "title": "Fine",
+      "description": "A traffic fine issued to a driver",
+      "type": "object",
+      "properties": {
+        "driverName": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "licenseNumber": { "type": "string" },
+        "licenseCategory": { "type": "string" },
+        "violationType": { "type": "string" },
+        "officerEmail": { "type": "string", "format": "email" },
+        "officerUid": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "paid", "verified", "rejected"] },
+        "region": { "type": "string" },
+        "zone": { "type": "string" },
+        "city": { "type": "string" },
+        "wereda": { "type": "string" },
+        "violationAddress": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "receiptImageUrl": { "type": "string" },
+        "receiptVerified": { "type": "boolean" },
+        "receiptData": { "type": "object" }
+      },
+      "required": ["driverName", "phoneNumber", "licenseNumber", "amount", "status", "officerEmail"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data"
+    },
+    "/fines/{fineId}": {
+      "schema": "Fine",
+      "description": "Traffic fine records"
+    }
+  }
+}

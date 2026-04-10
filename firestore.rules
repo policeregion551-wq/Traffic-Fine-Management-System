@@ -1,0 +1,122 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required, email format)
+    //   - name: string
+    //   - role: string (enum: ['police', 'driver', 'admin'])
+    //   - region: string
+    //   - zone: string
+    //   - city: string
+    //   - wereda: string
+    //
+    // Collection: fines
+    // Document ID: {fineId}
+    // Fields:
+    //   - driverName: string (required)
+    //   - phoneNumber: string (required)
+    //   - vehicleType: string
+    //   - licenseNumber: string (required)
+    //   - licenseCategory: string
+    //   - violationType: string
+    //   - officerEmail: string (required, email format)
+    //   - officerUid: string
+    //   - amount: number (required)
+    //   - status: string (enum: ['pending', 'paid', 'verified', 'rejected'])
+    //   - region: string
+    //   - zone: string
+    //   - city: string
+    //   - wereda: string
+    //   - violationAddress: string
+    //   - createdAt: timestamp (required)
+    //   - receiptImageUrl: string
+    //   - receiptVerified: bool
+    //   - receiptData: map
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "policeregion551@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isPolice() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'police' || isAdmin());
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.role in ['police', 'driver', 'admin'];
+    }
+
+    function isValidFine(data) {
+      return data.keys().hasAll(['driverName', 'phoneNumber', 'licenseNumber', 'amount', 'status', 'officerEmail']) &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['pending', 'paid', 'verified', 'rejected'] &&
+             isValidEmail(data.officerEmail);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role;
+      allow delete: if isAdmin();
+    }
+
+    match /fines/{fineId} {
+      allow read: if isAuthenticated();
+      allow create: if isPolice() && isValidFine(request.resource.data);
+      allow update: if isAuthenticated() && (
+        // Police can update status or details
+        isPolice() ||
+        // Drivers can update status to 'paid' and add receiptImageUrl
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'receiptImageUrl']) &&
+         request.resource.data.status == 'paid')
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /staff/{staffId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+    }
+  }
+}
