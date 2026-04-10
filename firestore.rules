@@ -105,13 +105,14 @@ service cloud.firestore {
     }
 
     function isValidFine(data) {
-      return data.keys().hasAll(['driverName', 'driverEmail', 'phoneNumber', 'licenseNumber', 'amount', 'status', 'officerEmail', 'officerUid', 'createdAt', 'recordCode']) &&
+      return data.keys().hasAll(['driverName', 'driverEmail', 'phoneNumber', 'licenseNumber', 'plateNumber', 'amount', 'status', 'officerEmail', 'officerUid', 'createdAt', 'recordCode']) &&
              data.amount is number && data.amount > 0 &&
              data.status in ['pending', 'paid', 'verified', 'rejected'] &&
              isValidEmail(data.officerEmail) &&
              isValidEmail(data.driverEmail) &&
              isValidString(data.driverName, 100) &&
              isValidString(data.licenseNumber, 50) &&
+             isValidString(data.plateNumber, 20) &&
              isValidString(data.recordCode, 20) &&
              data.officerUid == request.auth.uid;
     }
@@ -139,11 +140,9 @@ service cloud.firestore {
     }
 
     match /fines/{fineId} {
-      // Admin can read all
-      // Police can only read fines they issued
+      // Admin and Police can read all
       // Drivers can only read fines issued to them
-      allow read: if isAdmin() || 
-                  (isPolice() && resource.data.officerUid == request.auth.uid) || 
+      allow read: if isAdmin() || isPolice() || 
                   (isAuthenticated() && request.auth.token.email == resource.data.driverEmail);
       
       allow create: if isPolice() && isValidFine(request.resource.data) && isRecent(request.resource.data.createdAt);

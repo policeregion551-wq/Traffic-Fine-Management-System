@@ -44,13 +44,19 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
     let q;
     
     if (userProfile.role === 'police' || userProfile.role === 'admin') {
-      q = query(finesRef, orderBy('createdAt', 'desc'));
+      q = query(finesRef);
     } else {
       q = query(finesRef, where('driverEmail', '==', userProfile.email || ''));
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const finesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Sort in memory
+      finesData.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.seconds || 0;
+        const dateB = b.createdAt?.seconds || 0;
+        return dateB - dateA;
+      });
       setFines(finesData);
       setLoading(false);
     }, (err) => {
@@ -84,8 +90,12 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
       reader.onloadend = async () => {
         const base64String = (reader.result as string).split(',')[1];
         
+        // Calculate total amount if paying all pending fines for this driver
+        const driverPendingFines = fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending');
+        const totalAmount = driverPendingFines.reduce((acc, curr) => acc + curr.amount, 0);
+
         // Use Gemini to verify the receipt with name matching
-        const verificationResult = await verifyReceipt(base64String, selectedFine.amount, selectedFine.driverName);
+        const verificationResult = await verifyReceipt(base64String, totalAmount, selectedFine.driverName);
         
         if (verificationResult && verificationResult.isAuthentic) {
           // 1. Check for duplicate transaction ID
@@ -115,7 +125,7 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
           // 2. Check Name Matching and Amount
           if (!verificationResult.matchesExpectedAmount || !verificationResult.matchesExpectedName) {
             let mismatchMsg = lang === 'en' ? "Verification failed: " : "ማረጋገጥ አልተቻለም፡ ";
-            if (!verificationResult.matchesExpectedAmount) mismatchMsg += lang === 'en' ? "Amount mismatch. " : "የገንዘብ መጠኑ አይመሳሰልም። ";
+            if (!verificationResult.matchesExpectedAmount) mismatchMsg += lang === 'en' ? `Amount mismatch. Expected ${totalAmount} ETB. ` : `የገንዘብ መጠኑ አይመሳሰልም። የሚጠበቀው ${totalAmount} ብር ነው። `;
             if (!verificationResult.matchesExpectedName) mismatchMsg += lang === 'en' ? "Name on receipt does not match driver name. " : "በደረሰኙ ላይ ያለው ስም ከአሽከርካሪው ስም ጋር አይመሳሰልም። ";
             
             setError(mismatchMsg);
@@ -123,14 +133,19 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
             return;
           }
 
-          // 3. Success - Update fine status
-          await updateDoc(doc(db, 'fines', selectedFine.id), {
-            status: 'paid',
-            receiptImageUrl: reader.result as string,
-            receiptVerified: true,
-            receiptData: verificationResult,
-            paidAt: new Date().toISOString()
-          });
+          // 3. Success - Update ALL pending fines for this driver
+          const batchPromises = driverPendingFines.map(fine => 
+            updateDoc(doc(db, 'fines', fine.id), {
+              status: 'paid',
+              receiptImageUrl: reader.result as string,
+              receiptVerified: true,
+              receiptData: verificationResult,
+              paidAt: new Date().toISOString()
+            })
+          );
+          
+          await Promise.all(batchPromises);
+          
           setUploadSuccess(true);
           setSelectedFine(null);
         } else {
@@ -294,12 +309,29 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-500">{t.violation}</span>
-                    <span className="font-semibold text-slate-900">{selectedFine.violationType}</span>
+                    <span className="font-semibold text-slate-900">
+                      {fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending').length > 1 
+                        ? (lang === 'en' ? 'Multiple Violations' : 'በርካታ ጥፋቶች')
+                        : selectedFine.violationType}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">{lang === 'en' ? 'Amount Due' : 'የሚከፈል መጠን'}</span>
-                    <span className="font-bold text-blue-600 text-lg">{selectedFine.amount} ETB</span>
+                    <span className="text-slate-500">{lang === 'en' ? 'Total Amount Due' : 'ጠቅላላ የሚከፈል መጠን'}</span>
+                    <span className="font-bold text-blue-600 text-lg">
+                      {fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending')
+                        .reduce((acc, curr) => acc + curr.amount, 0)} ETB
+                    </span>
                   </div>
+                  {fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending').length > 1 && (
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                      <p className="text-xs text-amber-700 font-medium flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        {lang === 'en' 
+                          ? "You have multiple unpaid fines. They must be paid together." 
+                          : "እርስዎ በርካታ ያልተከፈሉ ቅጣቶች አሉዎት። ሁሉም በአንድ ላይ መከፈል አለባቸው።"}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-6 bg-slate-50 rounded-2xl mb-8">

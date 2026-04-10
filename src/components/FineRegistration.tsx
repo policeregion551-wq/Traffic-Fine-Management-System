@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { motion } from 'motion/react';
 import { AlertCircle, CheckCircle2, Shield, User, Phone, Car, FileText, Mail, MapPin, DollarSign, Clock } from 'lucide-react';
 
@@ -17,6 +17,7 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
     driverEmail: '',
     phoneNumber: '',
     vehicleType: '',
+    plateNumber: '',
     licenseNumber: '',
     violationType: '',
     violationLocation: '',
@@ -38,6 +39,16 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
     return code;
   };
 
+  const sendEmailNotification = async (email: string, code: string, amount: number) => {
+    // In a real production app, this would call a backend API (e.g., /api/send-email)
+    // which uses a service like SendGrid, Mailgun, or AWS SES.
+    console.log(`[EMAIL SIMULATION] Sending record code ${code} to ${email} for amount ${amount} ETB`);
+    
+    // We simulate the API call delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -45,6 +56,21 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
     setGeneratedCode(null);
 
     try {
+      // Check for existing unpaid fines
+      const finesRef = collection(db, 'fines');
+      const q = query(finesRef, where('driverEmail', '==', formData.driverEmail));
+      const snapshot = await getDocs(q);
+      const unpaidFines = snapshot.docs.filter(doc => doc.data().status === 'pending');
+      const unpaidCount = unpaidFines.length;
+
+      if (unpaidCount >= 2) {
+        setError(lang === 'en' 
+          ? "Driver has 2 unpaid fines. System blocked. Take other action." 
+          : "አሽከርካሪው 2 ያልተከፈሉ ቅጣቶች አሉት። ሲስተሙ ተዘግቷል። ሌላ እርምጃ ይውሰዱ።");
+        setLoading(false);
+        return;
+      }
+
       const recordCode = generateRecordCode();
       const fineData = {
         ...formData,
@@ -57,6 +83,10 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
       };
 
       await addDoc(collection(db, 'fines'), fineData);
+      
+      // Send email notification (simulated)
+      await sendEmailNotification(formData.driverEmail, recordCode, parseFloat(formData.amount));
+
       setGeneratedCode(recordCode);
       setSuccess(true);
       setFormData({
@@ -64,6 +94,7 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
         driverEmail: '',
         phoneNumber: '',
         vehicleType: '',
+        plateNumber: '',
         licenseNumber: '',
         violationType: '',
         violationLocation: '',
@@ -185,6 +216,13 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
                 icon={<Car />} 
                 value={formData.vehicleType} 
                 onChange={(v: string) => setFormData({...formData, vehicleType: v})} 
+              />
+              <Input 
+                label={t.plateNumber} 
+                icon={<FileText />} 
+                value={formData.plateNumber} 
+                onChange={(v: string) => setFormData({...formData, plateNumber: v})} 
+                required 
               />
               <Input 
                 label={t.fineAmount} 

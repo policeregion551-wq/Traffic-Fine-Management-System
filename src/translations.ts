@@ -69,7 +69,10 @@ export const translations = {
     selectRole: "Select Your Role",
     admin: "Admin",
     police: "Traffic Police",
-    driverRole: "Driver"
+    driverRole: "Driver",
+    plateNumber: "Plate Number",
+    finesList: "List of Fines",
+    printReport: "Print Report"
   },
   am: {
     dashboard: "ዳሽቦርድ",
@@ -141,6 +144,9 @@ export const translations = {
     selectRole: "ተግባርዎን ይምረጡ",
     admin: "አድሚን",
     police: "የትራፊክ ፖሊስ",
-    driverRole: "አሽከርካሪ"
+    driverRole: "አሽከርካሪ",
+    plateNumber: "የታርጋ ቁጥር",
+    finesList: "የተቀጡ ዝርዝር",
+    printReport: "ሪፖርት አትም"
   }
 };

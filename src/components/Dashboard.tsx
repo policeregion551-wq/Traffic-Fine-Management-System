@@ -66,6 +66,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'stats' | 'users'>('stats');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [policeEmail, setPoliceEmail] = useState('');
   const [policeName, setPoliceName] = useState('');
@@ -80,15 +81,21 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
     let finesQuery;
 
     if (userProfile.role === 'admin') {
-      finesQuery = query(finesRef, orderBy('createdAt', 'desc'));
+      finesQuery = query(finesRef);
     } else if (userProfile.role === 'police') {
-      finesQuery = query(finesRef, where('officerUid', '==', userProfile.uid), orderBy('createdAt', 'desc'));
+      finesQuery = query(finesRef, where('officerUid', '==', userProfile.uid));
     } else {
-      finesQuery = query(finesRef, where('driverEmail', '==', userProfile.email), orderBy('createdAt', 'desc'));
+      finesQuery = query(finesRef, where('driverEmail', '==', userProfile.email));
     }
 
     const unsubscribeFines = onSnapshot(finesQuery, (snapshot) => {
-      setFines(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Fine)));
+      const fetchedFines = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Fine));
+      fetchedFines.sort((a, b) => {
+        const dateA = (a.createdAt as any)?.seconds || 0;
+        const dateB = (b.createdAt as any)?.seconds || 0;
+        return dateB - dateA;
+      });
+      setFines(fetchedFines);
       setLoading(false);
       setError(null);
     }, (err) => {
@@ -111,9 +118,15 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
         setStaffMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       });
 
-      const nq = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(10));
+      const nq = query(collection(db, 'notifications'), limit(10));
       const nUnsubscribe = onSnapshot(nq, (snapshot) => {
-        setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const fetchedNotifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        fetchedNotifications.sort((a: any, b: any) => {
+          const dateA = a.createdAt?.seconds || 0;
+          const dateB = b.createdAt?.seconds || 0;
+          return dateB - dateA;
+        });
+        setNotifications(fetchedNotifications);
       });
       
       const oldUnUsers = unsubscribeUsers;
@@ -129,6 +142,22 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
       unsubscribeStaff();
     };
   }, [userProfile]);
+
+  const filteredFines = React.useMemo(() => {
+    let result = fines;
+    if (statusFilter !== 'all') {
+      result = result.filter(f => f.status === statusFilter);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(f => 
+        f.driverName?.toLowerCase().includes(q) || 
+        f.plateNumber?.toLowerCase().includes(q) ||
+        f.licenseNumber?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [fines, statusFilter, searchQuery]);
 
   const stats = {
     total: fines.length,
@@ -355,7 +384,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                 <BarChart3 className="w-5 h-5 text-blue-600" />
                 {t.revenueTrend}
               </h3>
-              <div className="h-64 min-w-0">
+              <div className="h-[300px] w-full min-h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={revenueData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -376,7 +405,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                 <PieChartIcon className="w-5 h-5 text-purple-600" />
                 {t.violationDistribution}
               </h3>
-              <div className="h-64 min-w-0">
+              <div className="h-[300px] w-full min-h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -404,7 +433,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                 <CheckCircle2 className="w-5 h-5 text-green-600" />
                 {t.paymentStatusChart}
               </h3>
-              <div className="h-64 min-w-0">
+              <div className="h-[300px] w-full min-h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -432,15 +461,47 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Recent Violations Table */}
               <div className="lg:col-span-2 bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-8 border-b border-slate-50 flex justify-between items-center">
-                  <h3 className="text-xl font-bold text-slate-900">{t.recentViolations}</h3>
-                  <button className="text-blue-600 text-sm font-bold hover:underline">{t.viewAll}</button>
+                <div className="p-8 border-b border-slate-50 space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <h3 className="text-xl font-bold text-slate-900">{isAdmin ? t.finesList : t.recentViolations}</h3>
+                    <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                      <button 
+                        onClick={() => setStatusFilter('all')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        {lang === 'en' ? 'All' : 'ሁሉም'}
+                      </button>
+                      <button 
+                        onClick={() => setStatusFilter('paid')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'paid' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        {lang === 'en' ? 'Paid' : 'የተከፈለ'}
+                      </button>
+                      <button 
+                        onClick={() => setStatusFilter('pending')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'pending' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        {lang === 'en' ? 'Pending' : 'ያልተከፈለ'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder={t.searchPlaceholder}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
                       <tr className="bg-slate-50">
                         <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.driver}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.plateNumber}</th>
                         <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.violation}</th>
                         <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.amount}</th>
                         <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.status}</th>
@@ -448,7 +509,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {fines.slice(0, 5).map((fine) => (
+                      {filteredFines.slice(0, 10).map((fine) => (
                         <tr key={fine.id} className="hover:bg-slate-50 transition-colors group">
                           <td className="px-8 py-5">
                             <div className="flex items-center gap-3">
@@ -460,6 +521,9 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                                 <p className="text-xs text-slate-500">{fine.licenseNumber}</p>
                               </div>
                             </div>
+                          </td>
+                          <td className="px-8 py-5">
+                            <p className="text-sm font-bold text-slate-700">{fine.plateNumber || 'N/A'}</p>
                           </td>
                           <td className="px-8 py-5">
                             <p className="text-sm font-medium text-slate-700">{fine.violationType}</p>
@@ -494,7 +558,13 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                   <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold text-slate-900">{t.systemReports}</h2>
                     <div className="flex gap-2">
-                      <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><Printer className="w-5 h-5 text-slate-500" /></button>
+                      <button 
+                        onClick={() => window.print()}
+                        className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+                        title={t.printReport}
+                      >
+                        <Printer className="w-5 h-5 text-slate-500" />
+                      </button>
                       <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><Download className="w-5 h-5 text-slate-500" /></button>
                     </div>
                   </div>
@@ -576,7 +646,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                           </div>
                           <div>
                             <p className="font-bold text-slate-900">{fine.violationType}</p>
-                            <p className="text-xs text-slate-500">{new Date(fine.createdAt?.seconds * 1000).toLocaleDateString()}</p>
+                            <p className="text-xs text-slate-500">{fine.plateNumber} • {new Date(fine.createdAt?.seconds * 1000).toLocaleDateString()}</p>
                           </div>
                         </div>
                         <div className="text-right">
