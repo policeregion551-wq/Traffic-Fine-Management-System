@@ -122,11 +122,8 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      // 1. Owners can always read their own doc (Break circular dependency)
-      allow read: if isAuthenticated() && request.auth.uid == userId;
-      
-      // 2. Admins can read any doc
-      allow read: if isAdmin();
+      // Allow users to read their own profile or admins to read any profile
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       
       // On creation, users can only set their role to 'driver' unless they are admin
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
@@ -134,10 +131,10 @@ service cloud.firestore {
       
       // Users cannot change their own role
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
-                    request.resource.data.role == resource.data.role;
+                    (request.resource.data.role == resource.data.role || isAdmin());
       
       // Admin can do anything
-      allow write: if isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /fines/{fineId} {
@@ -164,7 +161,8 @@ service cloud.firestore {
     }
 
     match /staff/{staffId} {
-      allow read: if isPolice();
+      // Allow any authenticated user to read staff info (needed for role check during signup)
+      allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
 

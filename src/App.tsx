@@ -106,11 +106,14 @@ export default function App() {
             await setDoc(doc(db, 'users', user.uid), newProfile);
             setUserProfile(newProfile);
           }
-        } catch (err) {
-          handleFirestoreError(err, OperationType.GET, `users/${user.uid}`);
+        } catch (err: any) {
+          console.error("Profile fetch error:", err);
+          setError(err.message || "Failed to load user profile");
+          setUserProfile(null);
         }
       } else {
         setUserProfile(null);
+        setError(null);
       }
       setLoading(false);
     });
@@ -206,12 +209,36 @@ export default function App() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <motion.div 
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-        >
-          <Shield className="w-12 h-12 text-blue-600" />
-        </motion.div>
+        <div className="text-center">
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="inline-block mb-4"
+          >
+            <Shield className="w-12 h-12 text-blue-600" />
+          </motion.div>
+          <p className="text-slate-500 text-sm font-medium">Loading System...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !user) {
+    // Show error on login screen
+  } else if (error && user && !userProfile) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-8 text-center border border-red-100">
+          <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-6" />
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Error</h2>
+          <p className="text-slate-500 mb-8 text-sm">{error}</p>
+          <button 
+            onClick={() => signOut(auth)}
+            className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl"
+          >
+            Sign Out & Retry
+          </button>
+        </div>
       </div>
     );
   }

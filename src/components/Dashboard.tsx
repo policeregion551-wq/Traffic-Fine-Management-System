@@ -63,6 +63,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
   const [fines, setFines] = useState<Fine[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'stats' | 'users'>('stats');
   const [searchQuery, setSearchQuery] = useState('');
   const [policeEmail, setPoliceEmail] = useState('');
@@ -88,8 +89,10 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
     const unsubscribeFines = onSnapshot(finesQuery, (snapshot) => {
       setFines(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Fine)));
       setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'fines');
+      setError(null);
+    }, (err) => {
+      console.error("Fines snapshot error:", err);
+      setError(err.message);
       setLoading(false);
     });
 
@@ -189,6 +192,24 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
       setStaffLoading(false);
     }
   };
+
+  if (error) {
+    return (
+      <div className="p-8 text-center">
+        <div className="bg-red-50 p-6 rounded-3xl border border-red-100 inline-block">
+          <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-red-900 mb-2">Connection Error</h3>
+          <p className="text-red-700 text-sm mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700 transition-all"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
