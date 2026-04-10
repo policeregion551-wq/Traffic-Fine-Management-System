@@ -22,26 +22,24 @@
       "type": "object",
       "properties": {
         "driverName": { "type": "string" },
+        "driverEmail": { "type": "string", "format": "email" },
         "phoneNumber": { "type": "string" },
         "vehicleType": { "type": "string" },
         "licenseNumber": { "type": "string" },
-        "licenseCategory": { "type": "string" },
         "violationType": { "type": "string" },
+        "violationLocation": { "type": "string" },
+        "violationDate": { "type": "string", "format": "date" },
+        "paymentDeadline": { "type": "string", "format": "date" },
+        "dailyPenaltyRate": { "type": "number" },
+        "recordCode": { "type": "string" },
         "officerEmail": { "type": "string", "format": "email" },
         "officerUid": { "type": "string" },
         "amount": { "type": "number" },
         "status": { "type": "string", "enum": ["pending", "paid", "verified", "rejected"] },
-        "region": { "type": "string" },
-        "zone": { "type": "string" },
-        "city": { "type": "string" },
-        "wereda": { "type": "string" },
-        "violationAddress": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
-        "receiptImageUrl": { "type": "string" },
-        "receiptVerified": { "type": "boolean" },
-        "receiptData": { "type": "object" }
+        "receiptImageUrl": { "type": "string" }
       },
-      "required": ["driverName", "phoneNumber", "licenseNumber", "amount", "status", "officerEmail"]
+      "required": ["driverName", "driverEmail", "phoneNumber", "licenseNumber", "amount", "status", "officerEmail", "recordCode"]
     }
   },
   "firestore": {

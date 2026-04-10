@@ -29,9 +29,16 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
   const [verifying, setVerifying] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recordCode, setRecordCode] = useState('');
+  const [isVerified, setIsVerified] = useState(false);
 
   useEffect(() => {
     if (!userProfile) return;
+
+    // Police and Admin don't need record code verification to see the list
+    if (userProfile.role === 'police' || userProfile.role === 'admin') {
+      setIsVerified(true);
+    }
 
     const finesRef = collection(db, 'fines');
     let q;
@@ -39,7 +46,7 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
     if (userProfile.role === 'police' || userProfile.role === 'admin') {
       q = query(finesRef, orderBy('createdAt', 'desc'));
     } else {
-      q = query(finesRef, where('phoneNumber', '==', userProfile.phoneNumber || ''));
+      q = query(finesRef, where('driverEmail', '==', userProfile.email || ''));
     }
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -52,6 +59,18 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
 
     return () => unsubscribe();
   }, [userProfile]);
+
+  const handleVerifyCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    const matchingFine = fines.find(f => f.recordCode === recordCode.toUpperCase());
+    if (matchingFine) {
+      setIsVerified(true);
+      setError(null);
+      setSelectedFine(matchingFine);
+    } else {
+      setError(t.invalidCode);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -131,6 +150,53 @@ export default function FinePayment({ userProfile, lang }: { userProfile: any, l
     return (
       <div className="flex justify-center p-12">
         <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isVerified && userProfile?.role === 'driver') {
+    return (
+      <div className="max-w-md mx-auto pt-12">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100"
+        >
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Shield className="w-8 h-8 text-blue-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2 text-center">{t.enterRecordCode}</h2>
+          <p className="text-slate-500 mb-8 text-center text-sm">
+            {lang === 'en' ? 'Please enter the record code sent to your email to access your fine details.' : 'ቅጣትዎን ለማየት በኢሜልዎ የተላከውን የመዝገብ ኮድ ያስገቡ።'}
+          </p>
+
+          <form onSubmit={handleVerifyCode} className="space-y-4">
+            <div>
+              <input 
+                type="text"
+                value={recordCode}
+                onChange={(e) => setRecordCode(e.target.value)}
+                placeholder="XXXXXX"
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-center text-2xl font-mono font-bold tracking-widest focus:ring-2 focus:ring-blue-500 outline-none"
+                required
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                {error}
+              </div>
+            )}
+
+            <button 
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-200"
+            >
+              {t.verifyCode}
+            </button>
+          </form>
+        </motion.div>
       </div>
     );
   }

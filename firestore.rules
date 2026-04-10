@@ -10,37 +10,47 @@ service cloud.firestore {
     // Collection: users
     // Document ID: {userId}
     // Fields:
-    //   - uid: string (required)
-    //   - email: string (required, email format)
-    //   - name: string
-    //   - role: string (enum: ['police', 'driver', 'admin'])
-    //   - region: string
-    //   - zone: string
-    //   - city: string
-    //   - wereda: string
+    //   - uid: string (required, immutable)
+    //   - email: string (required, email format, immutable)
+    //   - name: string (max 100 chars)
+    //   - role: string (enum: ['police', 'driver', 'admin'], immutable for non-admins)
+    //   - phoneNumber: string (max 20 chars)
+    //   - address: string (max 200 chars)
+    //   - region: string (max 50 chars)
+    //   - zone: string (max 50 chars)
+    //   - city: string (max 50 chars)
+    //   - wereda: string (max 50 chars)
     //
     // Collection: fines
     // Document ID: {fineId}
     // Fields:
-    //   - driverName: string (required)
-    //   - phoneNumber: string (required)
-    //   - vehicleType: string
-    //   - licenseNumber: string (required)
-    //   - licenseCategory: string
-    //   - violationType: string
+    //   - driverName: string (required, max 100 chars)
+    //   - phoneNumber: string (required, max 20 chars)
+    //   - vehicleType: string (max 50 chars)
+    //   - licenseNumber: string (required, max 50 chars)
+    //   - licenseCategory: string (max 50 chars)
+    //   - violationType: string (max 100 chars)
     //   - officerEmail: string (required, email format)
-    //   - officerUid: string
-    //   - amount: number (required)
+    //   - officerUid: string (required)
+    //   - amount: number (required, positive)
     //   - status: string (enum: ['pending', 'paid', 'verified', 'rejected'])
-    //   - region: string
-    //   - zone: string
-    //   - city: string
-    //   - wereda: string
-    //   - violationAddress: string
-    //   - createdAt: timestamp (required)
-    //   - receiptImageUrl: string
+    //   - region: string (max 50 chars)
+    //   - zone: string (max 50 chars)
+    //   - city: string (max 50 chars)
+    //   - wereda: string (max 50 chars)
+    //   - violationAddress: string (max 200 chars)
+    //   - createdAt: timestamp (required, immutable)
+    //   - receiptImageUrl: string (max 500 chars)
     //   - receiptVerified: bool
-    //   - receiptData: map
+    //   - receiptData: map (max 10 keys)
+    //
+    // Collection: notifications (Fraud Alerts)
+    // Document ID: {notificationId}
+    // Fields:
+    //   - message: string (max 500 chars)
+    //   - driverName: string (max 100 chars)
+    //   - createdAt: timestamp (required)
+    //   - type: string (enum: ['fraud', 'system'])
     //
     // ===============================================================
 
@@ -71,18 +81,36 @@ service cloud.firestore {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
     }
 
+    function isValidString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isRecent(ts) {
+      return ts is timestamp && 
+             ts > request.time - duration.value(5, 'm') && 
+             ts < request.time + duration.value(5, 'm');
+    }
+
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'role']) &&
              data.uid == request.auth.uid &&
              data.email == request.auth.token.email &&
-             data.role in ['police', 'driver', 'admin'];
+             data.role in ['police', 'driver', 'admin'] &&
+             isValidString(data.get('name', ''), 100) &&
+             isValidString(data.get('phoneNumber', ''), 20) &&
+             isValidString(data.get('address', ''), 200);
     }
 
     function isValidFine(data) {
-      return data.keys().hasAll(['driverName', 'phoneNumber', 'licenseNumber', 'amount', 'status', 'officerEmail']) &&
+      return data.keys().hasAll(['driverName', 'driverEmail', 'phoneNumber', 'licenseNumber', 'amount', 'status', 'officerEmail', 'officerUid', 'createdAt', 'recordCode']) &&
              data.amount is number && data.amount > 0 &&
              data.status in ['pending', 'paid', 'verified', 'rejected'] &&
-             isValidEmail(data.officerEmail);
+             isValidEmail(data.officerEmail) &&
+             isValidEmail(data.driverEmail) &&
+             isValidString(data.driverName, 100) &&
+             isValidString(data.licenseNumber, 50) &&
+             isValidString(data.recordCode, 20) &&
+             data.officerUid == request.auth.uid;
     }
 
     // ===============================================================
@@ -90,33 +118,52 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role;
-      allow delete: if isAdmin();
+      // Only owner or admin can read user profile (protect PII)
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // On creation, users can only set their role to 'driver' unless they are admin
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    (request.resource.data.role == 'driver' || isAdmin());
+      
+      // Users cannot change their own role
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+                    request.resource.data.role == resource.data.role;
+      
+      // Admin can do anything
+      allow write: if isAdmin();
     }
 
     match /fines/{fineId} {
-      allow read: if isAuthenticated();
-      allow create: if isPolice() && isValidFine(request.resource.data);
+      // Police/Admin can read all
+      // Drivers can only read if their email matches driverEmail
+      allow read: if isPolice() || (isAuthenticated() && request.auth.token.email == resource.data.driverEmail);
+      
+      allow create: if isPolice() && isValidFine(request.resource.data) && isRecent(request.resource.data.createdAt);
+      
       allow update: if isAuthenticated() && (
         // Police can update status or details
         isPolice() ||
-        // Drivers can update status to 'paid' and add receiptImageUrl
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'receiptImageUrl']) &&
-         request.resource.data.status == 'paid')
+        // Drivers can update status to 'paid' and add receiptImageUrl, but nothing else
+        (request.auth.token.email == resource.data.driverEmail &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'receiptImageUrl']) &&
+         request.resource.data.status == 'paid' &&
+         isValidString(request.resource.data.receiptImageUrl, 500))
       );
+      
       allow delete: if isAdmin();
     }
 
     match /staff/{staffId} {
-      allow read: if isAuthenticated();
+      allow read: if isPolice();
       allow write: if isAdmin();
     }
 
     match /notifications/{notificationId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated();
+      // Only system or authenticated users can create notifications (e.g. fraud alerts)
+      allow create: if isAuthenticated() && 
+                    isValidString(request.resource.data.message, 500) &&
+                    isRecent(request.resource.data.createdAt);
     }
   }
 }

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { motion } from 'motion/react';
-import { AlertCircle, CheckCircle2, Shield, User, Phone, Car, FileText, Mail, MapPin, DollarSign } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Shield, User, Phone, Car, FileText, Mail, MapPin, DollarSign, Clock } from 'lucide-react';
 
 import { translations } from '../translations';
 
@@ -14,52 +14,66 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
 
   const [formData, setFormData] = useState({
     driverName: '',
+    driverEmail: '',
     phoneNumber: '',
     vehicleType: '',
     licenseNumber: '',
-    licenseCategory: '',
     violationType: '',
-    officerEmail: userProfile?.email || '',
+    violationLocation: '',
+    violationDate: new Date().toISOString().split('T')[0],
+    paymentDeadline: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    dailyPenaltyRate: '10',
     amount: '',
-    region: '',
-    zone: '',
-    city: '',
-    wereda: '',
-    violationAddress: ''
+    officerEmail: userProfile?.email || ''
   });
+
+  const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+
+  const generateRecordCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setGeneratedCode(null);
 
     try {
+      const recordCode = generateRecordCode();
       const fineData = {
         ...formData,
         amount: parseFloat(formData.amount),
+        dailyPenaltyRate: parseFloat(formData.dailyPenaltyRate),
         status: 'pending',
+        recordCode,
         officerUid: userProfile?.uid,
         createdAt: serverTimestamp(),
       };
 
       await addDoc(collection(db, 'fines'), fineData);
+      setGeneratedCode(recordCode);
       setSuccess(true);
       setFormData({
         driverName: '',
+        driverEmail: '',
         phoneNumber: '',
         vehicleType: '',
         licenseNumber: '',
-        licenseCategory: '',
         violationType: '',
-        officerEmail: userProfile?.email || '',
+        violationLocation: '',
+        violationDate: new Date().toISOString().split('T')[0],
+        paymentDeadline: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        dailyPenaltyRate: '10',
         amount: '',
-        region: '',
-        zone: '',
-        city: '',
-        wereda: '',
-        violationAddress: ''
+        officerEmail: userProfile?.email || ''
       });
-      setTimeout(() => setSuccess(false), 5000);
+      // Don't auto-hide success if we want to show the code
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'fines');
       setError(lang === 'en' ? "Failed to register fine." : "ቅጣቱን መመዝገብ አልተቻለም።");
@@ -93,6 +107,14 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
                 required 
               />
               <Input 
+                label={t.emailAddress} 
+                icon={<Mail />} 
+                type="email"
+                value={formData.driverEmail} 
+                onChange={(v: string) => setFormData({...formData, driverEmail: v})} 
+                required 
+              />
+              <Input 
                 label={t.phoneNumber} 
                 icon={<Phone />} 
                 value={formData.phoneNumber} 
@@ -100,48 +122,84 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
                 required 
               />
               <Input 
-                label={lang === 'en' ? "License Number" : "የመንጃ ፈቃድ ቁጥር"} 
+                label={t.licenseNumber} 
                 icon={<FileText />} 
                 value={formData.licenseNumber} 
                 onChange={(v: string) => setFormData({...formData, licenseNumber: v})} 
                 required 
               />
-              <Input 
-                label={lang === 'en' ? "License Category" : "የመንጃ ፈቃድ ደረጃ"} 
-                icon={<Shield />} 
-                value={formData.licenseCategory} 
-                onChange={(v: string) => setFormData({...formData, licenseCategory: v})} 
-              />
             </div>
           </section>
 
-          {/* Vehicle & Violation */}
+          {/* Violation Details */}
           <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 mb-4">
-              <Car className="w-5 h-5 text-blue-600" />
+              <AlertCircle className="w-5 h-5 text-blue-600" />
               {lang === 'en' ? 'Violation Details' : 'የጥፋቱ ዝርዝር'}
             </h2>
             
             <div className="space-y-4">
               <Input 
-                label={lang === 'en' ? "Vehicle Type" : "የተሽከርካሪ አይነት"} 
-                icon={<Car />} 
-                value={formData.vehicleType} 
-                onChange={(v: string) => setFormData({...formData, vehicleType: v})} 
-              />
-              <Input 
-                label={t.violation} 
+                label={t.violationType} 
                 icon={<AlertCircle />} 
                 value={formData.violationType} 
                 onChange={(v: string) => setFormData({...formData, violationType: v})} 
                 required 
               />
               <Input 
-                label={`${t.amount} (ETB)`} 
+                label={t.violationLocation} 
+                icon={<MapPin />} 
+                value={formData.violationLocation} 
+                onChange={(v: string) => setFormData({...formData, violationLocation: v})} 
+                required 
+              />
+              <div className="grid grid-cols-2 gap-4">
+                <Input 
+                  label={t.violationDate} 
+                  type="date"
+                  value={formData.violationDate} 
+                  onChange={(v: string) => setFormData({...formData, violationDate: v})} 
+                  required 
+                />
+                <Input 
+                  label={t.paymentDeadline} 
+                  type="date"
+                  value={formData.paymentDeadline} 
+                  onChange={(v: string) => setFormData({...formData, paymentDeadline: v})} 
+                  required 
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Vehicle & Amount */}
+          <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4 md:col-span-2">
+            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 mb-4">
+              <DollarSign className="w-5 h-5 text-blue-600" />
+              {lang === 'en' ? 'Vehicle & Penalty' : 'ተሽከርካሪ እና ቅጣት'}
+            </h2>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Input 
+                label={t.vehicleType} 
+                icon={<Car />} 
+                value={formData.vehicleType} 
+                onChange={(v: string) => setFormData({...formData, vehicleType: v})} 
+              />
+              <Input 
+                label={t.fineAmount} 
                 icon={<DollarSign />} 
                 type="number"
                 value={formData.amount} 
                 onChange={(v: string) => setFormData({...formData, amount: v})} 
+                required 
+              />
+              <Input 
+                label={t.dailyPenalty} 
+                icon={<Clock />} 
+                type="number"
+                value={formData.dailyPenaltyRate} 
+                onChange={(v: string) => setFormData({...formData, dailyPenaltyRate: v})} 
                 required 
               />
               <Input 
@@ -153,21 +211,6 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
               />
             </div>
           </section>
-
-          {/* Location Information */}
-          <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 space-y-4 md:col-span-2">
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2 mb-4">
-              <MapPin className="w-5 h-5 text-blue-600" />
-              {lang === 'en' ? 'Location Information' : 'የቦታ መረጃ'}
-            </h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              <Input label={lang === 'en' ? "Region" : "ክልል"} value={formData.region} onChange={(v: string) => setFormData({...formData, region: v})} />
-              <Input label={lang === 'en' ? "Zone/City" : "ዞን/ከተማ"} value={formData.zone} onChange={(v: string) => setFormData({...formData, zone: v})} />
-              <Input label={lang === 'en' ? "Wereda" : "ወረዳ"} value={formData.wereda} onChange={(v: string) => setFormData({...formData, wereda: v})} />
-              <Input label={lang === 'en' ? "Specific Address" : "ልዩ ቦታ"} value={formData.violationAddress} onChange={(v: string) => setFormData({...formData, violationAddress: v})} />
-            </div>
-          </section>
         </div>
 
         {error && (
@@ -177,20 +220,41 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
           </div>
         )}
 
-        {success && (
-          <div className="p-4 bg-green-50 text-green-600 rounded-2xl flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5" />
-            <p className="font-medium">{lang === 'en' ? 'Fine registered successfully!' : 'ቅጣቱ በተሳካ ሁኔታ ተመዝግቧል!'}</p>
-          </div>
+        {success && generatedCode && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="p-8 bg-green-50 text-green-800 rounded-3xl border border-green-100 text-center space-y-4"
+          >
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-8 h-8 text-green-600" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold mb-1">{lang === 'en' ? 'Fine Registered Successfully!' : 'ቅጣቱ በተሳካ ሁኔታ ተመዝግቧል!'}</h3>
+              <p className="text-sm text-green-700">{t.codeSent}</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-green-200 inline-block">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t.recordCode}</p>
+              <p className="text-4xl font-mono font-black text-green-600 tracking-widest">{generatedCode}</p>
+            </div>
+            <button 
+              onClick={() => { setSuccess(false); setGeneratedCode(null); }}
+              className="block mx-auto text-sm font-bold text-green-600 hover:underline"
+            >
+              {lang === 'en' ? 'Register Another Fine' : 'ሌላ ቅጣት መዝግብ'}
+            </button>
+          </motion.div>
         )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
-        >
-          {loading ? (lang === 'en' ? "Registering..." : "በመመዝገብ ላይ...") : t.issueFine}
-        </button>
+        {!success && (
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
+          >
+            {loading ? (lang === 'en' ? "Registering..." : "በመመዝገብ ላይ...") : t.issueFine}
+          </button>
+        )}
       </form>
     </div>
   );
