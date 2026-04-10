@@ -19,7 +19,10 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-export default function FinePayment({ userProfile }: { userProfile: any }) {
+import { translations } from '../translations';
+
+export default function FinePayment({ userProfile, lang }: { userProfile: any, lang: 'en' | 'am' }) {
+  const t = translations[lang];
   const [fines, setFines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedFine, setSelectedFine] = useState<any>(null);
@@ -72,7 +75,7 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
           const duplicateSnapshot = await getDocs(duplicateQuery);
 
           if (!duplicateSnapshot.empty) {
-            const errorMsg = "This receipt has already been used. Fraud attempt detected.";
+            const errorMsg = lang === 'en' ? "This receipt has already been used. Fraud attempt detected." : "ይህ ደረሰኝ ቀደም ብሎ ጥቅም ላይ ውሏል። የማጭበርበር ሙከራ ተገኝቷል።";
             setError(errorMsg);
             
             // Send notification to admin
@@ -92,9 +95,9 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
 
           // 2. Check Name Matching and Amount
           if (!verificationResult.matchesExpectedAmount || !verificationResult.matchesExpectedName) {
-            let mismatchMsg = "Verification failed: ";
-            if (!verificationResult.matchesExpectedAmount) mismatchMsg += "Amount mismatch. ";
-            if (!verificationResult.matchesExpectedName) mismatchMsg += "Name on receipt does not match driver name. ";
+            let mismatchMsg = lang === 'en' ? "Verification failed: " : "ማረጋገጥ አልተቻለም፡ ";
+            if (!verificationResult.matchesExpectedAmount) mismatchMsg += lang === 'en' ? "Amount mismatch. " : "የገንዘብ መጠኑ አይመሳሰልም። ";
+            if (!verificationResult.matchesExpectedName) mismatchMsg += lang === 'en' ? "Name on receipt does not match driver name. " : "በደረሰኙ ላይ ያለው ስም ከአሽከርካሪው ስም ጋር አይመሳሰልም። ";
             
             setError(mismatchMsg);
             setVerifying(false);
@@ -112,14 +115,14 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
           setUploadSuccess(true);
           setSelectedFine(null);
         } else {
-          setError("Receipt verification failed. The image might be unclear or invalid.");
+          setError(lang === 'en' ? "Receipt verification failed. The image might be unclear or invalid." : "ደረሰኙን ማረጋገጥ አልተቻለም። ምስሉ ግልጽ ላይሆን ይችላል።");
         }
         setVerifying(false);
       };
       reader.readAsDataURL(file);
     } catch (err) {
       console.error("Verification error", err);
-      setError("An error occurred during verification.");
+      setError(lang === 'en' ? "An error occurred during verification." : "በማረጋገጥ ሂደት ላይ ስህተት ተከስቷል።");
       setVerifying(false);
     }
   };
@@ -133,23 +136,23 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto pb-12">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">
-            {userProfile?.role === 'police' ? "Payment Tracking" : "My Fines & Payments"}
+            {userProfile?.role === 'police' || userProfile?.role === 'admin' ? (lang === 'en' ? "Payment Tracking" : "የክፍያ ክትትል") : t.myFines}
           </h1>
-          <p className="text-slate-500">View and settle outstanding traffic fines.</p>
+          <p className="text-slate-500">{lang === 'en' ? 'View and settle outstanding traffic fines.' : 'ያልተከፈሉ የትራፊክ ቅጣቶችን ይመልከቱ እና ይክፈሉ።'}</p>
         </div>
         
         <div className="flex gap-2">
           <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
             <Clock className="w-4 h-4" />
-            {fines.filter(f => f.status === 'pending').length} Pending
+            {fines.filter(f => f.status === 'pending').length} {lang === 'en' ? 'Pending' : 'ያልተከፈለ'}
           </div>
           <div className="bg-green-50 text-green-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4" />
-            {fines.filter(f => f.status === 'paid').length} Paid
+            {fines.filter(f => f.status === 'paid').length} {lang === 'en' ? 'Paid' : 'የተከፈለ'}
           </div>
         </div>
       </div>
@@ -160,7 +163,7 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
           {fines.length === 0 ? (
             <div className="bg-white p-12 rounded-3xl text-center border border-dashed border-slate-200">
               <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <p className="text-slate-500 font-medium">No fines found.</p>
+              <p className="text-slate-500 font-medium">{lang === 'en' ? 'No fines found.' : 'ምንም ቅጣት አልተገኘም።'}</p>
             </div>
           ) : (
             fines.map((fine) => (
@@ -189,7 +192,7 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
                     <p className={`text-xs font-bold uppercase tracking-wider ${
                       fine.status === 'paid' ? 'text-green-600' : 'text-amber-600'
                     }`}>
-                      {fine.status}
+                      {fine.status === 'paid' ? (lang === 'en' ? 'Paid' : 'የተከፈለ') : (lang === 'en' ? 'Pending' : 'ያልተከፈለ')}
                     </p>
                   </div>
                 </div>
@@ -201,7 +204,7 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
                   </div>
                   {fine.status === 'pending' && (
                     <span className="text-blue-600 text-sm font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                      Pay Now <ChevronRight className="w-4 h-4" />
+                      {lang === 'en' ? 'Pay Now' : 'አሁን ይክፈሉ'} <ChevronRight className="w-4 h-4" />
                     </span>
                   )}
                 </div>
@@ -220,39 +223,39 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
                 exit={{ opacity: 0, y: 20 }}
                 className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 sticky top-8"
               >
-                <h2 className="text-xl font-bold text-slate-900 mb-6">Complete Payment</h2>
+                <h2 className="text-xl font-bold text-slate-900 mb-6">{lang === 'en' ? 'Complete Payment' : 'ክፍያውን ያጠናቅቁ'}</h2>
                 
                 <div className="space-y-4 mb-8">
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Violation</span>
+                    <span className="text-slate-500">{t.violation}</span>
                     <span className="font-semibold text-slate-900">{selectedFine.violationType}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">Amount Due</span>
+                    <span className="text-slate-500">{lang === 'en' ? 'Amount Due' : 'የሚከፈል መጠን'}</span>
                     <span className="font-bold text-blue-600 text-lg">{selectedFine.amount} ETB</span>
                   </div>
                 </div>
 
                 <div className="p-6 bg-slate-50 rounded-2xl mb-8">
-                  <p className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest">Payment Methods</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest">{lang === 'en' ? 'Payment Methods' : 'የክፍያ አማራጮች'}</p>
                   <div className="space-y-3">
                     <div className="p-4 bg-white rounded-xl border border-slate-100">
                       <div className="flex items-center gap-3 mb-2">
                         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">CBE</div>
-                        <span className="text-sm font-bold">Commercial Bank of Ethiopia</span>
+                        <span className="text-sm font-bold">{lang === 'en' ? 'Commercial Bank of Ethiopia' : 'የኢትዮጵያ ንግድ ባንክ'}</span>
                       </div>
-                      <p className="text-xs text-slate-500 mb-1">Account Number:</p>
+                      <p className="text-xs text-slate-500 mb-1">{lang === 'en' ? 'Account Number:' : 'የአካውንት ቁጥር፡'}</p>
                       <p className="text-lg font-mono font-bold text-blue-700 select-all">1000179910806</p>
                     </div>
                     <div className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-100 opacity-60">
                       <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">TB</div>
-                      <span className="text-sm font-semibold">Telebirr (Coming Soon)</span>
+                      <span className="text-sm font-semibold">Telebirr ({lang === 'en' ? 'Coming Soon' : 'በቅርቡ'})</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-4">
-                  <p className="text-sm text-slate-600 text-center">Upload your payment receipt screenshot for instant verification.</p>
+                  <p className="text-sm text-slate-600 text-center">{lang === 'en' ? 'Upload your payment receipt screenshot for instant verification.' : 'ለፈጣን ማረጋገጫ የክፍያ ደረሰኝዎን ፎቶ እዚህ ይጫኑ።'}</p>
                   
                   <label className="block">
                     <div className={`w-full border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
@@ -261,12 +264,12 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
                       {verifying ? (
                         <div className="flex flex-col items-center gap-3">
                           <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-                          <p className="text-sm font-bold text-blue-600">AI Verifying Receipt...</p>
+                          <p className="text-sm font-bold text-blue-600">{lang === 'en' ? 'AI Verifying Receipt...' : 'AI ደረሰኙን እያረጋገጠ ነው...'}</p>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center gap-3">
                           <Camera className="w-8 h-8 text-blue-600" />
-                          <p className="text-sm font-bold text-slate-700">Upload Receipt</p>
+                          <p className="text-sm font-bold text-slate-700">{lang === 'en' ? 'Upload Receipt' : 'ደረሰኝ ይጫኑ'}</p>
                           <p className="text-xs text-slate-400">JPG, PNG supported</p>
                         </div>
                       )}
@@ -291,7 +294,7 @@ export default function FinePayment({ userProfile }: { userProfile: any }) {
             ) : (
               <div className="bg-slate-100 p-8 rounded-3xl text-center border-2 border-dashed border-slate-200">
                 <CreditCard className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-slate-500 font-medium">Select a pending fine to complete payment.</p>
+                <p className="text-slate-500 font-medium">{lang === 'en' ? 'Select a pending fine to complete payment.' : 'ክፍያ ለመፈፀም ያልተከፈለ ቅጣት ይምረጡ።'}</p>
               </div>
             )}
           </AnimatePresence>
