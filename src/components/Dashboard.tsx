@@ -273,7 +273,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                 <BarChart3 className="w-5 h-5 text-blue-600" />
                 {t.revenueTrend}
               </h3>
-              <div className="h-64">
+              <div className="h-64 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={revenueData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -294,7 +294,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                 <PieChartIcon className="w-5 h-5 text-purple-600" />
                 {t.violationDistribution}
               </h3>
-              <div className="h-64">
+              <div className="h-64 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -322,7 +322,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                 <CheckCircle2 className="w-5 h-5 text-green-600" />
                 {t.paymentStatusChart}
               </h3>
-              <div className="h-64">
+              <div className="h-64 min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie

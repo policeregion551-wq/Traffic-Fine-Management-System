@@ -72,7 +72,15 @@ export default function App() {
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
-            setUserProfile(userDoc.data());
+            const data = userDoc.data();
+            // Force admin role for the specific email if it's not already set
+            if (user.email === "policeregion551@gmail.com" && data.role !== 'admin') {
+              const updatedProfile = { ...data, role: 'admin' };
+              await setDoc(doc(db, 'users', user.uid), updatedProfile);
+              setUserProfile(updatedProfile);
+            } else {
+              setUserProfile(data);
+            }
           } else {
             // Check if this email was pre-registered as police or admin in the 'staff' collection
             let role = 'driver';
@@ -152,7 +160,19 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Auth failed", err);
-      setError(err.message || "Authentication failed. Please check your credentials.");
+      let message = lang === 'en' ? "Authentication failed. Please check your credentials." : "መግባት አልተቻለም። እባክዎን መረጃዎን ያረጋግጡ።";
+      
+      if (err.code === 'auth/invalid-credential') {
+        message = lang === 'en' ? "Invalid email or password." : "የተሳሳተ ኢሜል ወይም የይለፍ ቃል::";
+      } else if (err.code === 'auth/email-already-in-use') {
+        message = lang === 'en' ? "This email is already registered." : "ይህ ኢሜል ቀድሞ ተመዝግቧል።";
+      } else if (err.code === 'auth/weak-password') {
+        message = lang === 'en' ? "Password is too weak." : "የይለፍ ቃሉ በጣም ደካማ ነው።";
+      } else if (err.code === 'auth/user-not-found') {
+        message = lang === 'en' ? "User not found." : "ተጠቃሚው አልተገኘም።";
+      }
+      
+      setError(message);
     } finally {
       setAuthLoading(false);
     }

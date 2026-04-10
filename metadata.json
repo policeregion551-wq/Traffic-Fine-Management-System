@@ -1,5 +1,5 @@
 {
-  "name": "traffic-fine-management-system",
+  "name": "Traffic Fine Management System",
   "description": "A comprehensive system for traffic police to register fines and drivers to pay and verify payments using AI-powered receipt scanning.",
   "requestFramePermissions": [
     "camera"
