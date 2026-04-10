@@ -98,11 +98,10 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'role']) &&
              data.uid == request.auth.uid &&
-             data.email == request.auth.token.email &&
+             data.email is string &&
              data.role in ['police', 'driver', 'admin'] &&
              isValidString(data.get('name', ''), 100) &&
-             isValidString(data.get('phoneNumber', ''), 20) &&
-             isValidString(data.get('address', ''), 200);
+             isValidString(data.get('phoneNumber', ''), 20);
     }
 
     function isValidFine(data) {
@@ -122,18 +121,20 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      // Allow users to read their own profile or admins to read any profile
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Allow users to read their own profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
       
-      // On creation, users can only set their role to 'driver' unless they are admin
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
-                    (request.resource.data.role == 'driver' || isAdmin());
+      // Allow admins to read any profile
+      allow read: if isAdmin();
       
-      // Users cannot change their own role
+      // Allow users to create their own profile
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      
+      // Users can update their own profile but cannot change their role unless admin
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
                     (request.resource.data.role == resource.data.role || isAdmin());
       
-      // Admin can do anything
+      // Admin can delete
       allow delete: if isAdmin();
     }
 

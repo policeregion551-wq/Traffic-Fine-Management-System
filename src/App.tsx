@@ -48,6 +48,7 @@ import {
   Loader2,
   Menu,
   X,
+  RefreshCw,
   Languages
 } from 'lucide-react';
 
@@ -224,21 +225,40 @@ export default function App() {
   }
 
   if (error && !user) {
-    // Show error on login screen
+    // Error will be shown inside the login form
   } else if (error && user && !userProfile) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-xl p-8 text-center border border-red-100">
-          <AlertCircle className="w-16 h-16 text-red-600 mx-auto mb-6" />
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Error</h2>
-          <p className="text-slate-500 mb-8 text-sm">{error}</p>
-          <button 
-            onClick={() => signOut(auth)}
-            className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl"
-          >
-            Sign Out & Retry
-          </button>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-md w-full bg-white rounded-[3rem] shadow-2xl p-10 text-center border border-slate-100"
+        >
+          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-8">
+            <AlertCircle className="w-10 h-10 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 mb-3">System Access Error</h2>
+          <p className="text-slate-500 mb-10 text-sm leading-relaxed">
+            {error.includes("permissions") 
+              ? "Your account permissions are being updated. Please try again in a moment."
+              : error}
+          </p>
+          <div className="space-y-3">
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
+            >
+              <RefreshCw className="w-5 h-5" />
+              Try Again
+            </button>
+            <button 
+              onClick={() => signOut(auth)}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-4 rounded-2xl transition-all"
+            >
+              Sign Out
+            </button>
+          </div>
+        </motion.div>
       </div>
     );
   }
