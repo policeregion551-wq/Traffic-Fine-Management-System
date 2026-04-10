@@ -62,6 +62,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
   const t = translations[lang];
   const [fines, setFines] = useState<Fine[]>([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [staffMembers, setStaffMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'stats' | 'users'>('stats');
@@ -97,10 +98,17 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
     });
 
     let unsubscribeUsers = () => {};
+    let unsubscribeStaff = () => {};
+
     if (userProfile?.role === 'admin') {
       const usersRef = collection(db, 'users');
       unsubscribeUsers = onSnapshot(usersRef, (snapshot) => {
         setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+
+      const staffRef = collection(db, 'staff');
+      unsubscribeStaff = onSnapshot(staffRef, (snapshot) => {
+        setStaffMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       });
 
       const nq = query(collection(db, 'notifications'), orderBy('createdAt', 'desc'), limit(10));
@@ -118,6 +126,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
     return () => {
       unsubscribeFines();
       unsubscribeUsers();
+      unsubscribeStaff();
     };
   }, [userProfile]);
 
@@ -127,7 +136,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
     pending: fines.filter(f => f.status === 'pending').length,
     officers: new Set(fines.map(f => f.officerEmail)).size,
     totalUsers: allUsers.length,
-    totalPolice: allUsers.filter(u => u.role === 'police').length,
+    totalPolice: new Set([...allUsers.filter(u => u.role === 'police').map(u => u.email), ...staffMembers.map(s => s.email)]).size,
     totalDrivers: allUsers.filter(u => u.role === 'driver').length,
   };
 
@@ -219,7 +228,32 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
     );
   }
 
-  const filteredUsers = allUsers.filter(u => 
+  const mergedUsers = React.useMemo(() => {
+    const usersMap = new Map();
+    
+    // Add staff members first (as pending)
+    staffMembers.forEach(staff => {
+      usersMap.set(staff.email, {
+        ...staff,
+        isPending: true,
+        id: staff.id,
+        name: staff.name || 'Pending Officer'
+      });
+    });
+
+    // Overwrite with actual users who have logged in
+    allUsers.forEach(user => {
+      usersMap.set(user.email, {
+        ...user,
+        isPending: false,
+        id: user.id
+      });
+    });
+
+    return Array.from(usersMap.values());
+  }, [allUsers, staffMembers]);
+
+  const filteredUsers = mergedUsers.filter(u => 
     u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.phoneNumber?.includes(searchQuery)
@@ -659,7 +693,14 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                             {user.name?.charAt(0)}
                           </div>
                           <div>
-                            <p className="font-bold text-slate-900">{user.name}</p>
+                            <p className="font-bold text-slate-900">
+                              {user.name}
+                              {user.isPending && (
+                                <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md uppercase font-black">
+                                  {lang === 'en' ? 'Pending' : 'በጥበቃ ላይ'}
+                                </span>
+                              )}
+                            </p>
                             <p className="text-xs text-slate-500 flex items-center gap-1">
                               <Mail className="w-3 h-3" /> {user.email}
                             </p>
