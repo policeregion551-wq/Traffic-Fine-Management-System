@@ -59,6 +59,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [lang, setLang] = useState<'en' | 'am'>('am');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<'admin' | 'police' | 'driver' | null>(null);
 
   const t = translations[lang];
 
@@ -130,33 +131,38 @@ export default function App() {
 
     try {
       if (authMode === 'register') {
+        if (selectedRole !== 'driver') {
+          throw new Error(lang === 'en' ? "Only drivers can register themselves. Police and Admins must be registered by the system." : "አሽከርካሪዎች ብቻ ናቸው እራሳቸውን መመዝገብ የሚችሉት። ፖሊሶች እና አድሚኖች በሲስተሙ መመዝገብ አለባቸው።");
+        }
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName: name });
         
-        // Check role
-        let role = 'driver';
-        if (email === "policeregion551@gmail.com") {
-          role = 'admin';
-        } else {
-          const staffQuery = query(collection(db, 'staff'), where('email', '==', email));
-          const staffSnapshot = await getDocs(staffQuery);
-          if (!staffSnapshot.empty) {
-            role = staffSnapshot.docs[0].data().role;
-          }
-        }
-
         const newProfile = {
           uid: userCredential.user.uid,
           email,
           name,
           phoneNumber,
-          role,
+          role: 'driver',
           createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, 'users', userCredential.user.uid), newProfile);
         setUserProfile(newProfile);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        // After login, check if the role matches the selected role
+        const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+        if (userDoc.exists()) {
+          const profile = userDoc.data();
+          if (selectedRole && profile.role !== selectedRole) {
+            // Special case: policeregion551@gmail.com is always admin
+            if (email === "policeregion551@gmail.com" && selectedRole === 'admin') {
+              // Allow
+            } else {
+              await signOut(auth);
+              throw new Error(lang === 'en' ? `Access denied. You are registered as a ${profile.role}, but you selected ${selectedRole}.` : `መግባት አልተቻለም። እርስዎ የተመዘገቡት እንደ ${profile.role} ነው፣ ነገር ግን የመረጡት ${selectedRole} ነው።`);
+            }
+          }
+        }
       }
     } catch (err: any) {
       console.error("Auth failed", err);
@@ -223,85 +229,150 @@ export default function App() {
           </button>
         </div>
 
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8"
-        >
-          <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Shield className="w-8 h-8 text-blue-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2 text-center">{lang === 'en' ? 'Traffic Fine System' : 'የትራፊክ ቅጣት ሲስተም'}</h1>
-          <p className="text-slate-600 mb-8 text-center text-sm">{lang === 'en' ? 'Securely manage traffic violations and payments in Ethiopia.' : 'የትራፊክ ጥፋቶችን እና ክፍያዎችን በኢትዮጵያ ውስጥ ደህንነቱ በተጠበቀ ሁኔታ ያስተዳድሩ።'}</p>
-          
-          <form onSubmit={handleAuth} className="space-y-4">
-            {authMode === 'register' && (
-              <>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.fullName}</label>
-                  <input 
-                    name="name"
-                    required
-                    placeholder={lang === 'en' ? "Enter your full name" : "ሙሉ ስምዎን ያስገቡ"}
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.phoneNumber}</label>
-                  <input 
-                    name="phoneNumber"
-                    required
-                    placeholder="+251..."
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                </div>
-              </>
-            )}
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.emailAddress}</label>
-              <input 
-                name="email"
-                type="email"
-                required
-                placeholder="email@example.com"
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.password}</label>
-              <input 
-                name="password"
-                type="password"
-                required
-                placeholder="••••••••"
-                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-              />
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                {error}
+        <AnimatePresence mode="wait">
+          {!selectedRole ? (
+            <motion.div 
+              key="role-selection"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8"
+            >
+              <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Shield className="w-8 h-8 text-blue-600" />
               </div>
-            )}
+              <h1 className="text-2xl font-bold text-slate-900 mb-2 text-center">{t.selectRole}</h1>
+              <p className="text-slate-600 mb-8 text-center text-sm">{lang === 'en' ? 'Please choose your role to continue.' : 'እባክዎን ለመቀጠል ተግባርዎን ይምረጡ።'}</p>
+              
+              <div className="grid gap-4">
+                <RoleButton 
+                  icon={<Shield className="w-6 h-6" />}
+                  title={t.admin}
+                  description={lang === 'en' ? "System administration and management" : "የሲስተም አስተዳደር እና ቁጥጥር"}
+                  onClick={() => setSelectedRole('admin')}
+                />
+                <RoleButton 
+                  icon={<Car className="w-6 h-6" />}
+                  title={t.police}
+                  description={lang === 'en' ? "Traffic violation registration and monitoring" : "የትራፊክ ጥፋቶች ምዝገባ እና ክትትል"}
+                  onClick={() => setSelectedRole('police')}
+                />
+                <RoleButton 
+                  icon={<UserIcon className="w-6 h-6" />}
+                  title={t.driverRole}
+                  description={lang === 'en' ? "View fines and make payments" : "ቅጣቶችን ማየት እና ክፍያ መፈፀም"}
+                  onClick={() => setSelectedRole('driver')}
+                />
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="auth-form"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8"
+            >
+              <button 
+                onClick={() => { setSelectedRole(null); setError(null); setAuthMode('login'); }}
+                className="mb-6 text-sm font-semibold text-blue-600 flex items-center gap-1 hover:text-blue-700 transition-all"
+              >
+                <ChevronRight className="w-4 h-4 rotate-180" />
+                {lang === 'en' ? 'Back to roles' : 'ወደ ምርጫ ተመለስ'}
+              </button>
 
-            <button
-              disabled={authLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
-            >
-              {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (authMode === 'login' ? t.signIn : t.createAccount)}
-            </button>
-          </form>
-          
-          <div className="mt-6 text-center">
-            <button 
-              onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}
-              className="text-sm font-semibold text-blue-600 hover:text-blue-700"
-            >
-              {authMode === 'login' ? t.noAccount : t.haveAccount}
-            </button>
-          </div>
-        </motion.div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="bg-blue-100 p-3 rounded-2xl">
+                  {selectedRole === 'admin' && <Shield className="w-6 h-6 text-blue-600" />}
+                  {selectedRole === 'police' && <Car className="w-6 h-6 text-blue-600" />}
+                  {selectedRole === 'driver' && <UserIcon className="w-6 h-6 text-blue-600" />}
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    {selectedRole === 'admin' ? t.admin : selectedRole === 'police' ? t.police : t.driverRole}
+                  </h2>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{authMode === 'login' ? t.signIn : t.createAccount}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleAuth} className="space-y-4">
+                {authMode === 'register' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.fullName}</label>
+                      <input 
+                        name="name"
+                        required
+                        placeholder={lang === 'en' ? "Enter your full name" : "ሙሉ ስምዎን ያስገቡ"}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.phoneNumber}</label>
+                      <input 
+                        name="phoneNumber"
+                        required
+                        placeholder="+251..."
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      />
+                    </div>
+                  </>
+                )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.emailAddress}</label>
+                  <input 
+                    name="email"
+                    type="email"
+                    required
+                    placeholder="email@example.com"
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.password}</label>
+                  <input 
+                    name="password"
+                    type="password"
+                    required
+                    placeholder="••••••••"
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+
+                {error && (
+                  <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                <button
+                  disabled={authLoading}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
+                >
+                  {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (authMode === 'login' ? t.signIn : t.createAccount)}
+                </button>
+              </form>
+              
+              {selectedRole === 'driver' && (
+                <div className="mt-6 text-center">
+                  <button 
+                    onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }}
+                    className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+                  >
+                    {authMode === 'login' ? t.noAccount : t.haveAccount}
+                  </button>
+                </div>
+              )}
+
+              {selectedRole !== 'driver' && authMode === 'login' && (
+                <p className="mt-6 text-center text-xs text-slate-400 font-medium">
+                  {lang === 'en' ? "Registration is managed by the system administrator." : "ምዝገባ የሚከናወነው በሲስተም አድሚኒስትሬተሩ ነው።"}
+                </p>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -529,6 +600,24 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode, labe
     >
       <span className="w-6 h-6">{icon}</span>
       <span className="font-semibold">{label}</span>
+    </button>
+  );
+}
+
+function RoleButton({ icon, title, description, onClick }: { icon: React.ReactNode, title: string, description: string, onClick: () => void }) {
+  return (
+    <button 
+      onClick={onClick}
+      className="w-full flex items-center gap-4 p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-blue-50 hover:border-blue-200 transition-all group text-left"
+    >
+      <div className="bg-white p-3 rounded-xl shadow-sm group-hover:bg-blue-600 group-hover:text-white transition-all">
+        {icon}
+      </div>
+      <div className="flex-1">
+        <h3 className="font-bold text-slate-900">{title}</h3>
+        <p className="text-xs text-slate-500">{description}</p>
+      </div>
+      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 transition-all" />
     </button>
   );
 }

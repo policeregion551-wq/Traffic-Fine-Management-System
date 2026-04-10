@@ -1,9 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+let aiInstance: GoogleGenAI | null = null;
+
+function getAi() {
+  if (!aiInstance && process.env.GEMINI_API_KEY) {
+    aiInstance = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return aiInstance;
+}
 
 export async function verifyReceipt(base64Image: string, expectedAmount: number, expectedName: string) {
-  if (!process.env.GEMINI_API_KEY) {
+  const ai = getAi();
+  if (!ai) {
     console.warn("GEMINI_API_KEY is not set. Skipping AI verification.");
     return {
       isAuthentic: true, // Fallback for demo if key is missing

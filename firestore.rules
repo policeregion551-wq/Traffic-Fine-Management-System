@@ -68,13 +68,17 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         request.auth.token.email == "policeregion551@gmail.com");
+        (request.auth.token.email == "policeregion551@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
     function isPolice() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'police' || isAdmin());
+        (request.auth.token.email == "policeregion551@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'police' ||
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')));
     }
 
     function isValidEmail(email) {
@@ -118,8 +122,11 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      // Only owner or admin can read user profile (protect PII)
-      allow read: if isOwner(userId) || isAdmin();
+      // 1. Owners can always read their own doc (Break circular dependency)
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      
+      // 2. Admins can read any doc
+      allow read: if isAdmin();
       
       // On creation, users can only set their role to 'driver' unless they are admin
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
@@ -134,9 +141,12 @@ service cloud.firestore {
     }
 
     match /fines/{fineId} {
-      // Police/Admin can read all
-      // Drivers can only read if their email matches driverEmail
-      allow read: if isPolice() || (isAuthenticated() && request.auth.token.email == resource.data.driverEmail);
+      // Admin can read all
+      // Police can only read fines they issued
+      // Drivers can only read fines issued to them
+      allow read: if isAdmin() || 
+                  (isPolice() && resource.data.officerUid == request.auth.uid) || 
+                  (isAuthenticated() && request.auth.token.email == resource.data.driverEmail);
       
       allow create: if isPolice() && isValidFine(request.resource.data) && isRecent(request.resource.data.createdAt);
       
