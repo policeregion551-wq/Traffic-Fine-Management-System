@@ -39,10 +39,10 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
     return code;
   };
 
-  const sendEmailNotification = async (email: string, code: string, amount: number) => {
+  const sendEmailNotification = async (driverEmail: string, officerEmail: string, code: string, amount: number) => {
     // In a real production app, this would call a backend API (e.g., /api/send-email)
     // which uses a service like SendGrid, Mailgun, or AWS SES.
-    console.log(`[EMAIL SIMULATION] Sending record code ${code} to ${email} for amount ${amount} ETB`);
+    console.log(`[EMAIL SIMULATION] Sending record code ${code} to DRIVER (${driverEmail}) and OFFICER (${officerEmail}) for amount ${amount} ETB`);
     
     // We simulate the API call delay
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -84,8 +84,8 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
 
       await addDoc(collection(db, 'fines'), fineData);
       
-      // Send email notification (simulated)
-      await sendEmailNotification(formData.driverEmail, recordCode, parseFloat(formData.amount));
+      // Send email notification (simulated) to both driver and officer
+      await sendEmailNotification(formData.driverEmail, formData.officerEmail, recordCode, parseFloat(formData.amount));
 
       setGeneratedCode(recordCode);
       setSuccess(true);
