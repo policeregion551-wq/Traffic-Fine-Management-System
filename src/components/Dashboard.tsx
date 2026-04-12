@@ -52,6 +52,7 @@ import { translations } from '../translations';
 interface Fine {
   id: string;
   driverName: string;
+  driverEmail: string;
   phoneNumber: string;
   licenseNumber: string;
   violationType: string;
@@ -59,6 +60,7 @@ interface Fine {
   status: string;
   createdAt: any;
   officerEmail: string;
+  plateNumber?: string;
   paidAt?: string;
 }
 
@@ -159,6 +161,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
       const q = searchQuery.toLowerCase();
       result = result.filter(f => 
         f.driverName?.toLowerCase().includes(q) || 
+        f.driverEmail?.toLowerCase().includes(q) ||
         f.plateNumber?.toLowerCase().includes(q) ||
         f.licenseNumber?.toLowerCase().includes(q)
       );
