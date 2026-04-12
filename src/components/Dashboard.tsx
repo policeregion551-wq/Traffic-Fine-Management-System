@@ -30,6 +30,7 @@ import {
   Activity,
   ArrowUpRight,
   ArrowDownRight,
+  ArrowLeft,
   FileText,
   Clock
 } from 'lucide-react';
@@ -75,6 +76,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
   const [policeName, setPoliceName] = useState('');
   const [policePassword, setPolicePassword] = useState('');
   const [policeWorkLocation, setPoliceWorkLocation] = useState('');
+  const [selectedUser, setSelectedUser] = useState<any>(null);
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffSuccess, setStaffSuccess] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -681,6 +683,152 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
             </div>
           )}
         </>
+      ) : selectedUser ? (
+        /* Detailed User View (Police Report) */
+        <div className="space-y-6">
+          <button 
+            onClick={() => setSelectedUser(null)}
+            className="flex items-center gap-2 text-slate-500 hover:text-blue-600 transition-colors font-bold text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            {t.backToUsers}
+          </button>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Profile Card */}
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+              <div className="flex flex-col items-center text-center">
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold mb-4 ${
+                  selectedUser.role === 'admin' ? 'bg-red-50 text-red-600' : 
+                  selectedUser.role === 'police' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'
+                }`}>
+                  {selectedUser.name?.charAt(0)}
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900">{selectedUser.name}</h2>
+                <p className="text-slate-500 text-sm">{selectedUser.email}</p>
+                <span className={`mt-3 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                  selectedUser.role === 'admin' ? 'bg-red-100 text-red-700' : 
+                  selectedUser.role === 'police' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                }`}>
+                  {selectedUser.role}
+                </span>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-slate-50">
+                <div className="flex items-center gap-3 text-sm">
+                  <Phone className="w-4 h-4 text-slate-400" />
+                  <span className="text-slate-600">{selectedUser.phoneNumber || '-'}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <MapPin className="w-4 h-4 text-slate-400" />
+                  <span className="text-slate-600">{selectedUser.address || '-'}</span>
+                </div>
+                {selectedUser.workLocation && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Shield className="w-4 h-4 text-blue-600" />
+                    <span className="text-blue-600 font-bold">{selectedUser.workLocation}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 text-sm">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <span className="text-slate-600">{lang === 'en' ? 'Joined' : 'የተቀላቀለበት'}: {new Date(selectedUser.createdAt).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Performance Stats */}
+            <div className="lg:col-span-2 space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                      <FileText className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalFinesIssued}</p>
+                      <p className="text-2xl font-black text-slate-900">
+                        {fines.filter(f => f.officerEmail === selectedUser.email).length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-green-50 rounded-2xl flex items-center justify-center text-green-600">
+                      <DollarSign className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalAmountCollected}</p>
+                      <p className="text-2xl font-black text-slate-900">
+                        {fines
+                          .filter(f => f.officerEmail === selectedUser.email && f.status === 'paid')
+                          .reduce((acc, curr) => acc + curr.amount, 0)
+                          .toLocaleString()} ETB
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fine History for this Officer */}
+              <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-slate-900">{t.policeReport}</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{lang === 'en' ? 'Driver' : 'አሽከርካሪ'}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.fineAmount}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.status}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{lang === 'en' ? 'Date' : 'ቀን'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {fines
+                        .filter(f => f.officerEmail === selectedUser.email)
+                        .map((fine) => (
+                          <tr key={fine.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-8 py-4">
+                              <p className="text-sm font-bold text-slate-900">{fine.driverName}</p>
+                              <p className="text-xs text-slate-500">{fine.plateNumber}</p>
+                            </td>
+                            <td className="px-8 py-4">
+                              <p className="text-sm font-black text-slate-900">{fine.amount.toLocaleString()} ETB</p>
+                            </td>
+                            <td className="px-8 py-4">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                fine.status === 'paid' ? 'bg-green-100 text-green-700' : 
+                                fine.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                {fine.status}
+                              </span>
+                            </td>
+                            <td className="px-8 py-4">
+                              <p className="text-xs text-slate-500">
+                                {fine.createdAt?.toDate ? fine.createdAt.toDate().toLocaleDateString() : new Date(fine.createdAt).toLocaleDateString()}
+                              </p>
+                            </td>
+                          </tr>
+                        ))}
+                      {fines.filter(f => f.officerEmail === selectedUser.email).length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-8 py-12 text-center">
+                            <div className="flex flex-col items-center gap-2 text-slate-400">
+                              <FileText className="w-8 h-8 opacity-20" />
+                              <p className="text-sm font-medium">{t.noFinesFound}</p>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       ) : (
         /* User Management Section */
         <div className="space-y-6">
@@ -844,7 +992,10 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                         </p>
                       </td>
                       <td className="px-8 py-5">
-                        <button className="p-2 hover:bg-white rounded-xl transition-colors text-blue-600 font-bold text-sm flex items-center gap-1">
+                        <button 
+                          onClick={() => setSelectedUser(user)}
+                          className="p-2 hover:bg-white rounded-xl transition-colors text-blue-600 font-bold text-sm flex items-center gap-1"
+                        >
                           {t.details} <ChevronRight className="w-4 h-4" />
                         </button>
                       </td>
