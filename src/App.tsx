@@ -75,7 +75,7 @@ export default function App() {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
             const data = userDoc.data();
-            // Force admin role for the specific email if it's not already set
+            // Force admin role for the specific email if not already set
             if (user.email === "policeregion551@gmail.com" && data.role !== 'admin') {
               const updatedProfile = { ...data, role: 'admin' };
               await setDoc(doc(db, 'users', user.uid), updatedProfile);
@@ -158,9 +158,9 @@ export default function App() {
         if (userDoc.exists()) {
           const profile = userDoc.data();
           if (selectedRole && profile.role !== selectedRole) {
-            // Special case: policeregion551@gmail.com is always admin
+            // Special case: specific email is always admin
             if (email === "policeregion551@gmail.com" && selectedRole === 'admin') {
-              // Allow
+              // Allow and the useEffect will fix the database role
             } else {
               await signOut(auth);
               throw new Error(lang === 'en' ? `Access denied. You are registered as a ${profile.role}, but you selected ${selectedRole}.` : `መግባት አልተቻለም። እርስዎ የተመዘገቡት እንደ ${profile.role} ነው፣ ነገር ግን የመረጡት ${selectedRole} ነው።`);
