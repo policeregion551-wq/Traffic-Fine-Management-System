@@ -73,7 +73,13 @@ export const translations = {
     plateNumber: "Plate Number",
     finesList: "List of Fines",
     printReport: "Print Report",
-    workLocation: "Work Location"
+    workLocation: "Work Location",
+    policeReport: "Police Performance Report",
+    totalFinesIssued: "Total Fines Issued",
+    totalAmountCollected: "Total Amount Collected",
+    officerDetails: "Officer Details",
+    backToUsers: "Back to Users",
+    noFinesFound: "No fines found for this officer."
   },
   am: {
     dashboard: "ዳሽቦርድ",
@@ -149,6 +155,12 @@ export const translations = {
     plateNumber: "የታርጋ ቁጥር",
     finesList: "የተቀጡ ዝርዝር",
     printReport: "ሪፖርት አትም",
-    workLocation: "የሚሰራበት ቦታ"
+    workLocation: "የሚሰራበት ቦታ",
+    policeReport: "የትራፊክ ፖሊስ የሥራ አፈጻጸም ሪፖርት",
+    totalFinesIssued: "ጠቅላላ የተቀጡ ቅጣቶች",
+    totalAmountCollected: "ጠቅላላ የተሰበሰበ ገንዘብ",
+    officerDetails: "የፖሊሱ ዝርዝር መረጃ",
+    backToUsers: "ወደ ተጠቃሚዎች ዝርዝር ተመለስ",
+    noFinesFound: "ለዚህ ፖሊስ የተመዘገበ ቅጣት የለም።"
   }
 };
