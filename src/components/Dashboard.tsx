@@ -1,403 +1,906 @@
 import React, { useState, useEffect } from 'react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc, getDoc, getDocs, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
-import { verifyReceipt } from '../lib/gemini';
-import { motion, AnimatePresence } from 'motion/react';
+import { collection, query, onSnapshot, orderBy, limit, addDoc, setDoc, doc, getDocs, where } from 'firebase/firestore';
+import { initializeApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut as authSignOut } from 'firebase/auth';
+import firebaseConfig from '../../firebase-applet-config.json';
+import { motion } from 'motion/react';
 import { 
-  CreditCard, 
-  Upload, 
-  CheckCircle2, 
-  AlertCircle, 
-  Clock, 
-  Shield, 
+  BarChart3, 
+  TrendingUp, 
+  Users, 
   DollarSign, 
-  FileText,
-  Camera,
-  Loader2,
+  AlertTriangle, 
+  Download, 
+  Printer, 
+  Calendar,
   ChevronRight,
-  History,
-  AlertTriangle
+  Shield,
+  Car,
+  Plus,
+  Mail,
+  CheckCircle2,
+  AlertCircle,
+  PieChart as PieChartIcon,
+  ShieldCheck,
+  UserCircle,
+  Phone,
+  MapPin,
+  Search,
+  Activity,
+  ArrowUpRight,
+  ArrowDownRight,
+  FileText,
+  Clock
 } from 'lucide-react';
-
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  PieChart, 
+  Pie, 
+  Cell,
+  Legend
+} from 'recharts';
 import { translations } from '../translations';
 
-export default function FinePayment({ userProfile, lang }: { userProfile: any, lang: 'en' | 'am' }) {
+interface Fine {
+  id: string;
+  driverName: string;
+  phoneNumber: string;
+  licenseNumber: string;
+  violationType: string;
+  amount: number;
+  status: string;
+  createdAt: any;
+  officerEmail: string;
+  paidAt?: string;
+}
+
+export default function Dashboard({ userProfile, lang }: { userProfile: any, lang: 'en' | 'am' }) {
   const t = translations[lang];
-  const [fines, setFines] = useState<any[]>([]);
+  const [fines, setFines] = useState<Fine[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [staffMembers, setStaffMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedFine, setSelectedFine] = useState<any>(null);
-  const [verifying, setVerifying] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recordCode, setRecordCode] = useState('');
-  const [isVerified, setIsVerified] = useState(false);
+  const [activeTab, setActiveTab] = useState<'stats' | 'users'>('stats');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [policeEmail, setPoliceEmail] = useState('');
+  const [policeName, setPoliceName] = useState('');
+  const [policePassword, setPolicePassword] = useState('');
+  const [policeWorkLocation, setPoliceWorkLocation] = useState('');
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [staffSuccess, setStaffSuccess] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
     if (!userProfile) return;
 
-    // Police and Admin don't need record code verification to see the list
-    if (userProfile.role === 'police' || userProfile.role === 'admin') {
-      setIsVerified(true);
-    }
-
     const finesRef = collection(db, 'fines');
-    let q;
-    
-    if (userProfile.role === 'police' || userProfile.role === 'admin') {
-      q = query(finesRef);
+    let finesQuery;
+
+    if (userProfile.role === 'admin') {
+      finesQuery = query(finesRef);
+    } else if (userProfile.role === 'police') {
+      finesQuery = query(finesRef, where('officerUid', '==', userProfile.uid));
     } else {
-      q = query(finesRef, where('driverEmail', '==', userProfile.email || ''));
+      finesQuery = query(finesRef, where('driverEmail', '==', userProfile.email));
     }
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const finesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sort in memory
-      finesData.sort((a: any, b: any) => {
-        const dateA = a.createdAt?.seconds || 0;
-        const dateB = b.createdAt?.seconds || 0;
+    const unsubscribeFines = onSnapshot(finesQuery, (snapshot) => {
+      const fetchedFines = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Fine));
+      fetchedFines.sort((a, b) => {
+        const dateA = (a.createdAt as any)?.seconds || 0;
+        const dateB = (b.createdAt as any)?.seconds || 0;
         return dateB - dateA;
       });
-      setFines(finesData);
+      setFines(fetchedFines);
       setLoading(false);
+      setError(null);
     }, (err) => {
-      handleFirestoreError(err, OperationType.LIST, 'fines');
+      console.error("Fines snapshot error:", err);
+      setError(err.message);
+      setLoading(false);
     });
 
-    return () => unsubscribe();
+    let unsubscribeUsers = () => {};
+    let unsubscribeStaff = () => {};
+
+    if (userProfile?.role === 'admin') {
+      const usersRef = collection(db, 'users');
+      unsubscribeUsers = onSnapshot(usersRef, (snapshot) => {
+        setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+
+      const staffRef = collection(db, 'staff');
+      unsubscribeStaff = onSnapshot(staffRef, (snapshot) => {
+        setStaffMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+
+      const nq = query(collection(db, 'notifications'), limit(10));
+      const nUnsubscribe = onSnapshot(nq, (snapshot) => {
+        const fetchedNotifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        fetchedNotifications.sort((a: any, b: any) => {
+          const dateA = a.createdAt?.seconds || 0;
+          const dateB = b.createdAt?.seconds || 0;
+          return dateB - dateA;
+        });
+        setNotifications(fetchedNotifications);
+      });
+      
+      const oldUnUsers = unsubscribeUsers;
+      unsubscribeUsers = () => {
+        oldUnUsers();
+        nUnsubscribe();
+      };
+    }
+
+    return () => {
+      unsubscribeFines();
+      unsubscribeUsers();
+      unsubscribeStaff();
+    };
   }, [userProfile]);
 
-  const handleVerifyCode = (e: React.FormEvent) => {
+  const filteredFines = React.useMemo(() => {
+    let result = fines;
+    if (statusFilter !== 'all') {
+      result = result.filter(f => f.status === statusFilter);
+    }
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(f => 
+        f.driverName?.toLowerCase().includes(q) || 
+        f.plateNumber?.toLowerCase().includes(q) ||
+        f.licenseNumber?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [fines, statusFilter, searchQuery]);
+
+  const stats = {
+    total: fines.length,
+    revenue: fines.filter(f => f.status === 'paid').reduce((acc, curr) => acc + (curr.amount || 0), 0),
+    pending: fines.filter(f => f.status === 'pending').length,
+    officers: new Set(fines.map(f => f.officerEmail)).size,
+    totalUsers: allUsers.length,
+    totalPolice: new Set([...allUsers.filter(u => u.role === 'police').map(u => u.email), ...staffMembers.map(s => s.email)]).size,
+    totalDrivers: allUsers.filter(u => u.role === 'driver').length,
+  };
+
+  const isDriver = userProfile?.role === 'driver';
+  const isPolice = userProfile?.role === 'police';
+  const isAdmin = userProfile?.role === 'admin';
+
+  // Chart Data Processing
+  const last7Days = [...Array(7)].map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    return d.toISOString().split('T')[0];
+  }).reverse();
+
+  const revenueData = last7Days.map(date => ({
+    date: new Date(date).toLocaleDateString(lang === 'en' ? 'en-US' : 'am-ET', { weekday: 'short' }),
+    amount: fines
+      .filter(f => f.status === 'paid' && f.paidAt?.startsWith(date))
+      .reduce((acc, curr) => acc + curr.amount, 0)
+  }));
+
+  const violationData = Object.entries(
+    fines.reduce((acc: any, curr) => {
+      const type = curr.violationType || 'Other';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {})
+  ).map(([name, value]) => ({ name, value }));
+
+  const statusData = [
+    { name: lang === 'en' ? 'Paid' : 'የተከፈለ', value: fines.filter(f => f.status === 'paid').length, color: '#10b981' },
+    { name: lang === 'en' ? 'Pending' : 'ያልተከፈለ', value: fines.filter(f => f.status === 'pending').length, color: '#f59e0b' }
+  ];
+
+  const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4'];
+
+  const handleRegisterPolice = async (e: React.FormEvent) => {
     e.preventDefault();
-    const matchingFine = fines.find(f => f.recordCode === recordCode.toUpperCase());
-    if (matchingFine) {
-      setIsVerified(true);
-      setError(null);
-      setSelectedFine(matchingFine);
-    } else {
-      setError(t.invalidCode);
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedFine) return;
-
-    setVerifying(true);
-    setError(null);
-
+    setStaffLoading(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = (reader.result as string).split(',')[1];
-        
-        // Calculate total amount if paying all pending fines for this driver
-        const driverPendingFines = fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending');
-        const totalAmount = driverPendingFines.reduce((acc, curr) => acc + curr.amount, 0);
+      // Initialize a secondary app to create the user without logging out the admin
+      const secondaryApp = initializeApp(firebaseConfig, 'Secondary');
+      const secondaryAuth = getAuth(secondaryApp);
 
-        // Use Gemini to verify the receipt with name matching
-        const verificationResult = await verifyReceipt(base64String, totalAmount, selectedFine.driverName);
-        
-        if (verificationResult && verificationResult.isAuthentic) {
-          // 1. Check for duplicate transaction ID
-          const transactionId = verificationResult.transactionId;
-          const duplicateQuery = query(collection(db, 'fines'), where('receiptData.transactionId', '==', transactionId));
-          const duplicateSnapshot = await getDocs(duplicateQuery);
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, policeEmail, policePassword);
+      const uid = userCredential.user.uid;
 
-          if (!duplicateSnapshot.empty) {
-            const errorMsg = lang === 'en' ? "This receipt has already been used. Fraud attempt detected." : "ይህ ደረሰኝ ቀደም ብሎ ጥቅም ላይ ውሏል። የማጭበርበር ሙከራ ተገኝቷል።";
-            setError(errorMsg);
-            
-            // Send notification to admin
-            await addDoc(collection(db, 'notifications'), {
-              type: 'fraud_attempt',
-              fineId: selectedFine.id,
-              driverName: selectedFine.driverName,
-              transactionId: transactionId,
-              message: `Driver ${selectedFine.driverName} attempted to reuse a receipt.`,
-              createdAt: serverTimestamp(),
-              severity: 'high'
-            });
+      await setDoc(doc(db, 'users', uid), {
+        uid,
+        email: policeEmail,
+        name: policeName,
+        workLocation: policeWorkLocation,
+        role: 'police',
+        createdAt: new Date().toISOString()
+      });
 
-            setVerifying(false);
-            return;
-          }
+      // Sign out from secondary app
+      await authSignOut(secondaryAuth);
 
-          // 2. Check Name Matching and Amount
-          if (!verificationResult.matchesExpectedAmount || !verificationResult.matchesExpectedName) {
-            let mismatchMsg = lang === 'en' ? "Verification failed: " : "ማረጋገጥ አልተቻለም፡ ";
-            if (!verificationResult.matchesExpectedAmount) mismatchMsg += lang === 'en' ? `Amount mismatch. Expected ${totalAmount} ETB. ` : `የገንዘብ መጠኑ አይመሳሰልም። የሚጠበቀው ${totalAmount} ብር ነው። `;
-            if (!verificationResult.matchesExpectedName) mismatchMsg += lang === 'en' ? "Name on receipt does not match driver name. " : "በደረሰኙ ላይ ያለው ስም ከአሽከርካሪው ስም ጋር አይመሳሰልም። ";
-            
-            setError(mismatchMsg);
-            setVerifying(false);
-            return;
-          }
+      // Simulate sending email to police officer
+      console.log(`[EMAIL SIMULATION] Sending credentials to ${policeEmail}. Password: ${policePassword}`);
 
-          // 3. Success - Update ALL pending fines for this driver
-          const batchPromises = driverPendingFines.map(fine => 
-            updateDoc(doc(db, 'fines', fine.id), {
-              status: 'paid',
-              receiptImageUrl: reader.result as string,
-              receiptVerified: true,
-              receiptData: verificationResult,
-              paidAt: new Date().toISOString()
-            })
-          );
-          
-          await Promise.all(batchPromises);
-          
-          setUploadSuccess(true);
-          setSelectedFine(null);
-        } else {
-          setError(lang === 'en' ? "Receipt verification failed. The image might be unclear or invalid." : "ደረሰኙን ማረጋገጥ አልተቻለም። ምስሉ ግልጽ ላይሆን ይችላል።");
-        }
-        setVerifying(false);
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error("Verification error", err);
-      setError(lang === 'en' ? "An error occurred during verification." : "በማረጋገጥ ሂደት ላይ ስህተት ተከስቷል።");
-      setVerifying(false);
+      setStaffSuccess(true);
+      setPoliceEmail('');
+      setPoliceName('');
+      setPolicePassword('');
+      setPoliceWorkLocation('');
+      setTimeout(() => setStaffSuccess(false), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message);
+    } finally {
+      setStaffLoading(false);
     }
   };
 
-  if (loading) {
+  const mergedUsers = React.useMemo(() => {
+    const usersMap = new Map();
+    
+    // Add staff members first (as pending)
+    staffMembers.forEach(staff => {
+      usersMap.set(staff.email, {
+        ...staff,
+        isPending: true,
+        id: staff.id,
+        name: staff.name || 'Pending Officer'
+      });
+    });
+
+    // Overwrite with actual users who have logged in
+    allUsers.forEach(user => {
+      usersMap.set(user.email, {
+        ...user,
+        isPending: false,
+        id: user.id
+      });
+    });
+
+    return Array.from(usersMap.values());
+  }, [allUsers, staffMembers]);
+
+  const filteredUsers = mergedUsers.filter(u => 
+    u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.phoneNumber?.includes(searchQuery)
+  );
+
+  const repeatOffenders = fines.reduce((acc: any, curr) => {
+    const key = curr.licenseNumber;
+    if (!acc[key]) {
+      acc[key] = { name: curr.driverName, count: 0, totalAmount: 0, license: key };
+    }
+    acc[key].count += 1;
+    acc[key].totalAmount += curr.amount;
+    return acc;
+  }, {});
+
+  const topOffenders = Object.values(repeatOffenders)
+    .sort((a: any, b: any) => b.count - a.count)
+    .slice(0, 5);
+
+  if (error) {
     return (
-      <div className="flex justify-center p-12">
-        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+      <div className="p-8 text-center">
+        <div className="bg-red-50 p-6 rounded-3xl border border-red-100 inline-block">
+          <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-red-900 mb-2">Connection Error</h3>
+          <p className="text-red-700 text-sm mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-red-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-red-700 transition-all"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
 
-  if (!isVerified && userProfile?.role === 'driver') {
+  if (loading) {
     return (
-      <div className="max-w-md mx-auto pt-12">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100"
-        >
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Shield className="w-8 h-8 text-blue-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2 text-center">{t.enterRecordCode}</h2>
-          <p className="text-slate-500 mb-8 text-center text-sm">
-            {lang === 'en' ? 'Please enter the record code sent to your email to access your fine details.' : 'ቅጣትዎን ለማየት በኢሜልዎ የተላከውን የመዝገብ ኮድ ያስገቡ።'}
-          </p>
-
-          <form onSubmit={handleVerifyCode} className="space-y-4">
-            <div>
-              <input 
-                type="text"
-                value={recordCode}
-                onChange={(e) => setRecordCode(e.target.value)}
-                placeholder="XXXXXX"
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-center text-2xl font-mono font-bold tracking-widest focus:ring-2 focus:ring-blue-500 outline-none"
-                required
-              />
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl flex items-center gap-2">
-                <AlertCircle className="w-4 h-4" />
-                {error}
-              </div>
-            )}
-
-            <button 
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-blue-200"
-            >
-              {t.verifyCode}
-            </button>
-          </form>
-        </motion.div>
+      <div className="flex justify-center p-12">
+        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto pb-12">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <div className="space-y-8 pb-12">
+      {/* Header with Tabs for Admin */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            {userProfile?.role === 'police' || userProfile?.role === 'admin' ? (lang === 'en' ? "Payment Tracking" : "የክፍያ ክትትል") : t.myFines}
+          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
+            {isAdmin ? t.dashboard : isPolice ? (lang === 'en' ? 'Officer Dashboard' : 'የፖሊስ ዳሽቦርድ') : (lang === 'en' ? 'Driver Dashboard' : 'የአሽከርካሪ ዳሽቦርድ')}
           </h1>
-          <p className="text-slate-500">{lang === 'en' ? 'View and settle outstanding traffic fines.' : 'ያልተከፈሉ የትራፊክ ቅጣቶችን ይመልከቱ እና ይክፈሉ።'}</p>
+          <p className="text-slate-500 text-sm mt-1">
+            {isAdmin ? (lang === 'en' ? 'System-wide overview' : 'ጠቅላላ የሲስተም ክትትል') : 
+             isPolice ? (lang === 'en' ? 'Your traffic enforcement activity' : 'የእርስዎ የትራፊክ ቁጥጥር ስራዎች') : 
+             (lang === 'en' ? 'Your traffic violation history' : 'የእርስዎ የትራፊክ ጥፋቶች ታሪክ')}
+          </p>
         </div>
         
-        <div className="flex gap-2">
-          <div className="bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            {fines.filter(f => f.status === 'pending').length} {lang === 'en' ? 'Pending' : 'ያልተከፈለ'}
+        {isAdmin && (
+          <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <button 
+              onClick={() => setActiveTab('stats')}
+              className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'stats' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Activity className="w-4 h-4" />
+              {lang === 'en' ? 'Statistics' : 'ስታቲስቲክስ'}
+            </button>
+            <button 
+              onClick={() => setActiveTab('users')}
+              className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === 'users' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              <Users className="w-4 h-4" />
+              {t.userManagement}
+            </button>
           </div>
-          <div className="bg-green-50 text-green-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4" />
-            {fines.filter(f => f.status === 'paid').length} {lang === 'en' ? 'Paid' : 'የተከፈለ'}
-          </div>
-        </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Fines List */}
-        <div className="lg:col-span-2 space-y-4">
-          {fines.length === 0 ? (
-            <div className="bg-white p-12 rounded-3xl text-center border border-dashed border-slate-200">
-              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <p className="text-slate-500 font-medium">{lang === 'en' ? 'No fines found.' : 'ምንም ቅጣት አልተገኘም።'}</p>
-            </div>
-          ) : (
-            fines.map((fine) => (
-              <motion.div
-                layoutId={fine.id}
-                key={fine.id}
-                onClick={() => fine.status === 'pending' && setSelectedFine(fine)}
-                className={`bg-white p-6 rounded-3xl border transition-all cursor-pointer group ${
-                  selectedFine?.id === fine.id ? 'border-blue-500 ring-4 ring-blue-50' : 'border-slate-100 hover:border-blue-200'
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex gap-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                      fine.status === 'paid' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
-                    }`}>
-                      {fine.status === 'paid' ? <CheckCircle2 /> : <Clock />}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-slate-900">{fine.violationType}</h3>
-                      <p className="text-sm text-slate-500">{fine.driverName} • {fine.licenseNumber}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-slate-900">{fine.amount} ETB</p>
-                    <p className={`text-xs font-bold uppercase tracking-wider ${
-                      fine.status === 'paid' ? 'text-green-600' : 'text-amber-600'
-                    }`}>
-                      {fine.status === 'paid' ? (lang === 'en' ? 'Paid' : 'የተከፈለ') : (lang === 'en' ? 'Pending' : 'ያልተከፈለ')}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-slate-50 flex justify-between items-center">
-                  <div className="flex items-center gap-4 text-xs text-slate-400">
-                    <span className="flex items-center gap-1"><History className="w-3 h-3" /> {new Date(fine.createdAt?.seconds * 1000).toLocaleDateString()}</span>
-                    <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> {fine.officerEmail}</span>
-                  </div>
-                  {fine.status === 'pending' && (
-                    <span className="text-blue-600 text-sm font-bold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                      {lang === 'en' ? 'Pay Now' : 'አሁን ይክፈሉ'} <ChevronRight className="w-4 h-4" />
-                    </span>
-                  )}
-                </div>
-              </motion.div>
-            ))
-          )}
-        </div>
+      {activeTab === 'stats' ? (
+        <>
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard 
+              title={isDriver ? (lang === 'en' ? 'My Fines' : 'የእኔ ቅጣቶች') : t.totalFines} 
+              value={stats.total} 
+              icon={<FileText className="w-6 h-6" />} 
+              color="blue"
+            />
+            <StatCard 
+              title={isDriver ? (lang === 'en' ? 'Total Paid' : 'ጠቅላላ የከፈልኩት') : t.totalRevenue} 
+              value={`${stats.revenue.toLocaleString()} ETB`} 
+              icon={<DollarSign className="w-6 h-6" />} 
+              color="green"
+            />
+            <StatCard 
+              title={t.pendingFines} 
+              value={stats.pending} 
+              icon={<Clock className="w-6 h-6" />} 
+              color="amber"
+            />
+            {!isDriver && (
+              <StatCard 
+                title={isAdmin ? t.activeOfficers : (lang === 'en' ? 'My Rank' : 'ደረጃ')} 
+                value={isAdmin ? stats.officers : (lang === 'en' ? 'Officer' : 'ፖሊስ')} 
+                icon={<Shield className="w-6 h-6" />} 
+                color="purple"
+              />
+            )}
+            {isDriver && (
+              <StatCard 
+                title={lang === 'en' ? 'License Status' : 'የመንጃ ፈቃድ ሁኔታ'} 
+                value={lang === 'en' ? 'Active' : 'ንቁ'} 
+                icon={<ShieldCheck className="w-6 h-6" />} 
+                color="purple"
+              />
+            )}
+          </div>
 
-        {/* Payment Panel */}
-        <div className="lg:col-span-1">
-          <AnimatePresence mode="wait">
-            {selectedFine ? (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 20 }}
-                className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 sticky top-8"
-              >
-                <h2 className="text-xl font-bold text-slate-900 mb-6">{lang === 'en' ? 'Complete Payment' : 'ክፍያውን ያጠናቅቁ'}</h2>
-                
-                <div className="space-y-4 mb-8">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">{t.violation}</span>
-                    <span className="font-semibold text-slate-900">
-                      {fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending').length > 1 
-                        ? (lang === 'en' ? 'Multiple Violations' : 'በርካታ ጥፋቶች')
-                        : selectedFine.violationType}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-500">{lang === 'en' ? 'Total Amount Due' : 'ጠቅላላ የሚከፈል መጠን'}</span>
-                    <span className="font-bold text-blue-600 text-lg">
-                      {fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending')
-                        .reduce((acc, curr) => acc + curr.amount, 0)} ETB
-                    </span>
-                  </div>
-                  {fines.filter(f => f.driverEmail === selectedFine.driverEmail && f.status === 'pending').length > 1 && (
-                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
-                      <p className="text-xs text-amber-700 font-medium flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4" />
-                        {lang === 'en' 
-                          ? "You have multiple unpaid fines. They must be paid together." 
-                          : "እርስዎ በርካታ ያልተከፈሉ ቅጣቶች አሉዎት። ሁሉም በአንድ ላይ መከፈል አለባቸው።"}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-6 bg-slate-50 rounded-2xl mb-8">
-                  <p className="text-xs font-bold text-slate-400 uppercase mb-4 tracking-widest">{lang === 'en' ? 'Payment Methods' : 'የክፍያ አማራጮች'}</p>
-                  <div className="space-y-3">
-                    <div className="p-4 bg-white rounded-xl border border-slate-100">
-                      <div className="flex items-center gap-3 mb-2">
-                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xs">CBE</div>
-                        <span className="text-sm font-bold">{lang === 'en' ? 'Commercial Bank of Ethiopia' : 'የኢትዮጵያ ንግድ ባንክ'}</span>
-                      </div>
-                      <p className="text-xs text-slate-500 mb-1">{lang === 'en' ? 'Account Number:' : 'የአካውንት ቁጥር፡'}</p>
-                      <p className="text-lg font-mono font-bold text-blue-700 select-all">1000179910806</p>
-                    </div>
-                    <div className="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-100 opacity-60">
-                      <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center text-white font-bold text-xs">TB</div>
-                      <span className="text-sm font-semibold">Telebirr ({lang === 'en' ? 'Coming Soon' : 'በቅርቡ'})</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-sm text-slate-600 text-center">{lang === 'en' ? 'Upload your payment receipt screenshot for instant verification.' : 'ለፈጣን ማረጋገጫ የክፍያ ደረሰኝዎን ፎቶ እዚህ ይጫኑ።'}</p>
-                  
-                  <label className="block">
-                    <div className={`w-full border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
-                      verifying ? 'bg-slate-50 border-slate-200' : 'border-blue-200 hover:border-blue-400 hover:bg-blue-50'
-                    }`}>
-                      {verifying ? (
-                        <div className="flex flex-col items-center gap-3">
-                          <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-                          <p className="text-sm font-bold text-blue-600">{lang === 'en' ? 'AI Verifying Receipt...' : 'AI ደረሰኙን እያረጋገጠ ነው...'}</p>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center gap-3">
-                          <Camera className="w-8 h-8 text-blue-600" />
-                          <p className="text-sm font-bold text-slate-700">{lang === 'en' ? 'Upload Receipt' : 'ደረሰኝ ይጫኑ'}</p>
-                          <p className="text-xs text-slate-400">JPG, PNG supported</p>
-                        </div>
-                      )}
-                    </div>
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      accept="image/*" 
-                      onChange={handleFileUpload}
-                      disabled={verifying}
+          {/* Visual Analytics */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-blue-600" />
+                {t.revenueTrend}
+              </h3>
+              <div className="h-[300px] w-full min-h-[300px]">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <BarChart data={revenueData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                    <Tooltip 
+                      cursor={{fill: '#f8fafc'}}
+                      contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                     />
-                  </label>
+                    <Bar dataKey="amount" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                <PieChartIcon className="w-5 h-5 text-purple-600" />
+                {t.violationDistribution}
+              </h3>
+              <div className="h-[300px] w-full min-h-[300px]">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <PieChart>
+                    <Pie
+                      data={violationData}
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {violationData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                    />
+                    <Legend verticalAlign="bottom" height={36}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                {t.paymentStatusChart}
+              </h3>
+              <div className="h-[300px] w-full min-h-[300px]">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <PieChart>
+                    <Pie
+                      data={statusData}
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {statusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                    />
+                    <Legend verticalAlign="bottom" height={36}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {!isDriver && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Recent Violations Table */}
+              <div className="lg:col-span-2 bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+                <div className="p-8 border-b border-slate-50 space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <h3 className="text-xl font-bold text-slate-900">{isAdmin ? t.finesList : t.recentViolations}</h3>
+                    <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+                      <button 
+                        onClick={() => setStatusFilter('all')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'all' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        {lang === 'en' ? 'All' : 'ሁሉም'}
+                      </button>
+                      <button 
+                        onClick={() => setStatusFilter('paid')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'paid' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        {lang === 'en' ? 'Paid' : 'የተከፈለ'}
+                      </button>
+                      <button 
+                        onClick={() => setStatusFilter('pending')}
+                        className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${statusFilter === 'pending' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500'}`}
+                      >
+                        {lang === 'en' ? 'Pending' : 'ያልተከፈለ'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder={t.searchPlaceholder}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.driver}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.plateNumber}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.violation}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.amount}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.status}</th>
+                        <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {filteredFines.slice(0, 10).map((fine) => (
+                        <tr key={fine.id} className="hover:bg-slate-50 transition-colors group">
+                          <td className="px-8 py-5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 font-bold">
+                                {fine.driverName?.charAt(0)}
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-900">{fine.driverName}</p>
+                                <p className="text-xs text-slate-500">{fine.licenseNumber}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-8 py-5">
+                            <p className="text-sm font-bold text-slate-700">{fine.plateNumber || 'N/A'}</p>
+                          </td>
+                          <td className="px-8 py-5">
+                            <p className="text-sm font-medium text-slate-700">{fine.violationType}</p>
+                            <p className="text-xs text-slate-400">{new Date(fine.createdAt?.seconds * 1000).toLocaleDateString()}</p>
+                          </td>
+                          <td className="px-8 py-5">
+                            <p className="font-bold text-slate-900">{fine.amount} ETB</p>
+                          </td>
+                          <td className="px-8 py-5">
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                              fine.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {fine.status === 'paid' ? (lang === 'en' ? 'Paid' : 'የተከፈለ') : (lang === 'en' ? 'Pending' : 'ያልተከፈለ')}
+                            </span>
+                          </td>
+                          <td className="px-8 py-5 text-right">
+                            <button className="p-2 hover:bg-white rounded-xl transition-colors opacity-0 group-hover:opacity-100">
+                              <ChevronRight className="w-5 h-5 text-slate-400" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Side Panels */}
+              <div className="space-y-8">
+                {/* Reports Section */}
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-slate-900">{t.systemReports}</h2>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => window.print()}
+                        className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+                        title={t.printReport}
+                      >
+                        <Printer className="w-5 h-5 text-slate-500" />
+                      </button>
+                      <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><Download className="w-5 h-5 text-slate-500" /></button>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <ReportAction title={t.dailyReport} description="Last 24 hours activity" />
+                    <ReportAction title={t.weeklyReport} description="Last 7 days performance" />
+                    <ReportAction title={t.monthlyReport} description="Full month summary" />
+                  </div>
                 </div>
 
-                {error && (
-                  <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-xl flex items-center gap-2 text-sm">
-                    <AlertCircle className="w-4 h-4" />
-                    {error}
+                {/* Top Offenders */}
+                <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+                  <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    {t.repeatOffenders}
+                  </h2>
+                  <div className="space-y-4">
+                    {topOffenders.map((offender: any, i) => (
+                      <div key={i} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                        <div>
+                          <p className="font-bold text-slate-900">{offender.name}</p>
+                          <p className="text-xs text-slate-500">{offender.license}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-red-600">{offender.count} Fines</p>
+                          <p className="text-xs text-slate-400">{offender.totalAmount} ETB</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Fraud Alerts (Admin Only) */}
+                {isAdmin && notifications.length > 0 && (
+                  <div className="bg-red-50 p-8 rounded-3xl shadow-sm border border-red-100">
+                    <h2 className="text-xl font-bold text-red-900 mb-6 flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                      {t.fraudAlerts}
+                    </h2>
+                    <div className="space-y-4">
+                      {notifications.map((n) => (
+                        <div key={n.id} className="p-4 bg-white rounded-2xl border border-red-100 shadow-sm">
+                          <p className="text-sm font-bold text-red-700 mb-1">{n.message}</p>
+                          <div className="flex justify-between text-xs text-slate-400">
+                            <span>{n.driverName}</span>
+                            <span>{new Date(n.createdAt?.seconds * 1000).toLocaleTimeString()}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-              </motion.div>
-            ) : (
-              <div className="bg-slate-100 p-8 rounded-3xl text-center border-2 border-dashed border-slate-200">
-                <CreditCard className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-slate-500 font-medium">{lang === 'en' ? 'Select a pending fine to complete payment.' : 'ክፍያ ለመፈፀም ያልተከፈለ ቅጣት ይምረጡ።'}</p>
               </div>
-            )}
-          </AnimatePresence>
+            </div>
+          )}
+
+          {isDriver && (
+            <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+              <div className="p-8 border-b border-slate-50">
+                <h3 className="text-xl font-bold text-slate-900">{t.myFines}</h3>
+              </div>
+              <div className="p-8">
+                {fines.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="bg-green-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle2 className="w-8 h-8 text-green-600" />
+                    </div>
+                    <h4 className="text-lg font-bold text-slate-900">{lang === 'en' ? 'No Fines Found' : 'ምንም ቅጣት አልተገኘም'}</h4>
+                    <p className="text-slate-500">{lang === 'en' ? 'You have a clean driving record!' : 'እርስዎ ንጹህ የመንዳት ታሪክ አለዎት!'}</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {fines.map((fine) => (
+                      <div key={fine.id} className="flex items-center justify-between p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:border-blue-200 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className="bg-white p-3 rounded-2xl shadow-sm">
+                            <AlertTriangle className="w-6 h-6 text-amber-500" />
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900">{fine.violationType}</p>
+                            <p className="text-xs text-slate-500">{fine.plateNumber} • {new Date(fine.createdAt?.seconds * 1000).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-black text-slate-900">{fine.amount} ETB</p>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-lg ${
+                            fine.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {fine.status === 'paid' ? (lang === 'en' ? 'Paid' : 'የተከፈለ') : (lang === 'en' ? 'Pending' : 'ያልተከፈለ')}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        /* User Management Section */
+        <div className="space-y-6">
+          {/* User Stats */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+            <StatCard title={t.totalUsers} value={stats.totalUsers} icon={<Users className="w-6 h-6" />} color="blue" />
+            <StatCard title={t.totalPolice} value={stats.totalPolice} icon={<ShieldCheck className="w-6 h-6" />} color="purple" />
+            <StatCard title={t.totalDrivers} value={stats.totalDrivers} icon={<UserCircle className="w-6 h-6" />} color="green" />
+          </div>
+
+          {/* Register Police Form */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+            <h2 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+              <Plus className="w-5 h-5 text-blue-600" />
+              {t.registerPolice}
+            </h2>
+            <form onSubmit={handleRegisterPolice} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">{t.officerName}</label>
+                  <div className="relative">
+                    <UserCircle className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      value={policeName}
+                      onChange={(e) => setPoliceName(e.target.value)}
+                      required
+                      placeholder="Full Name"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">{t.officerEmail}</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="email"
+                      value={policeEmail}
+                      onChange={(e) => setPoliceEmail(e.target.value)}
+                      required
+                      placeholder="email@police.gov.et"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">{t.password}</label>
+                  <div className="relative">
+                    <Clock className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="password"
+                      value={policePassword}
+                      onChange={(e) => setPolicePassword(e.target.value)}
+                      required
+                      placeholder="••••••••"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase ml-1">{t.workLocation}</label>
+                  <div className="relative">
+                    <MapPin className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      value={policeWorkLocation}
+                      onChange={(e) => setPoliceWorkLocation(e.target.value)}
+                      required
+                      placeholder={lang === 'en' ? "Work Location" : "የሚሰራበት ቦታ"}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl py-3 pl-11 pr-4 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+              <button 
+                disabled={staffLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                {staffLoading ? "Registering..." : t.addOfficer}
+              </button>
+              {staffSuccess && (
+                <p className="text-xs text-green-600 font-bold flex items-center gap-1 justify-center">
+                  <CheckCircle2 className="w-3 h-3" /> Officer registered successfully!
+                </p>
+              )}
+            </form>
+          </div>
+
+          <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+            <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h3 className="text-xl font-bold text-slate-900">{t.userList}</h3>
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text"
+                  placeholder={t.searchPlaceholder}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-100 rounded-xl py-2 pl-11 pr-4 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                />
+              </div>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{lang === 'en' ? 'User' : 'ተጠቃሚ'}</th>
+                    <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.role}</th>
+                    <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.phoneNumber}</th>
+                    <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.address}</th>
+                    <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{t.actions}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filteredUsers.map((user) => (
+                    <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="px-8 py-5">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                            user.role === 'admin' ? 'bg-red-50 text-red-600' : 
+                            user.role === 'police' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'
+                          }`}>
+                            {user.name?.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900">
+                              {user.name}
+                              {user.isPending && (
+                                <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md uppercase font-black">
+                                  {lang === 'en' ? 'Pending' : 'በጥበቃ ላይ'}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-slate-500 flex items-center gap-1">
+                              <Mail className="w-3 h-3" /> {user.email}
+                            </p>
+                            {user.workLocation && (
+                              <p className="text-[10px] text-blue-600 font-bold uppercase mt-1 flex items-center gap-1">
+                                <MapPin className="w-2 h-2" /> {user.workLocation}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-8 py-5">
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${
+                          user.role === 'admin' ? 'bg-red-100 text-red-700' : 
+                          user.role === 'police' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                        }`}>
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-8 py-5">
+                        <p className="text-sm text-slate-700 flex items-center gap-1">
+                          <Phone className="w-3 h-3 text-slate-400" /> {user.phoneNumber || '-'}
+                        </p>
+                      </td>
+                      <td className="px-8 py-5">
+                        <p className="text-sm text-slate-700 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-slate-400" /> {user.address || '-'}
+                        </p>
+                      </td>
+                      <td className="px-8 py-5">
+                        <button className="p-2 hover:bg-white rounded-xl transition-colors text-blue-600 font-bold text-sm flex items-center gap-1">
+                          {t.details} <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+function StatCard({ title, value, icon, color, trend, trendUp }: any) {
+  const colorClasses: any = {
+    blue: "bg-blue-50 text-blue-600",
+    green: "bg-green-50 text-green-600",
+    amber: "bg-amber-50 text-amber-600",
+    purple: "bg-purple-50 text-purple-600",
+    red: "bg-red-50 text-red-600"
+  };
+
+  return (
+    <motion.div 
+      whileHover={{ y: -5 }}
+      className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col justify-between group cursor-pointer"
+    >
+      <div className="flex justify-between items-start mb-4">
+        <div className={`p-4 rounded-2xl transition-all group-hover:scale-110 ${colorClasses[color]}`}>
+          {icon}
+        </div>
+        {trend && (
+          <div className={`flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-lg ${trendUp ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+            {trendUp ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+            {trend}
+          </div>
+        )}
+      </div>
+      <div>
+        <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">{title}</p>
+        <h4 className="text-2xl font-black text-slate-900">{value}</h4>
+      </div>
+    </motion.div>
+  );
+}
+
+function ReportAction({ title, description }: any) {
+  return (
+    <button className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-blue-50 rounded-2xl transition-all group border border-transparent hover:border-blue-100">
+      <div className="text-left">
+        <p className="font-bold text-slate-900 group-hover:text-blue-700">{title}</p>
+        <p className="text-xs text-slate-500">{description}</p>
+      </div>
+      <Download className="w-5 h-5 text-slate-300 group-hover:text-blue-500" />
+    </button>
   );
 }
