@@ -28,6 +28,13 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
     officerEmail: userProfile?.email || ''
   });
 
+  // Sync officerEmail when userProfile loads
+  React.useEffect(() => {
+    if (userProfile?.email) {
+      setFormData(prev => ({ ...prev, officerEmail: userProfile.email }));
+    }
+  }, [userProfile]);
+
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
 
   const generateRecordCode = () => {
@@ -78,7 +85,7 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
         dailyPenaltyRate: parseFloat(formData.dailyPenaltyRate),
         status: 'pending',
         recordCode,
-        officerUid: userProfile?.uid,
+        officerUid: userProfile.uid,
         createdAt: serverTimestamp(),
       };
 
@@ -287,10 +294,10 @@ export default function FineRegistration({ userProfile, lang }: { userProfile: a
         {!success && (
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !userProfile}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
           >
-            {loading ? (lang === 'en' ? "Registering..." : "በመመዝገብ ላይ...") : t.issueFine}
+            {loading ? (lang === 'en' ? "Registering..." : "በመመዝገብ ላይ...") : (!userProfile ? (lang === 'en' ? "Loading Profile..." : "ፕሮፋይል በመጫን ላይ...") : t.issueFine)}
           </button>
         )}
       </form>
