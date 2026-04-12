@@ -72,7 +72,8 @@ export const translations = {
     driverRole: "Driver",
     plateNumber: "Plate Number",
     finesList: "List of Fines",
-    printReport: "Print Report"
+    printReport: "Print Report",
+    workLocation: "Work Location"
   },
   am: {
     dashboard: "ዳሽቦርድ",
@@ -147,6 +148,7 @@ export const translations = {
     driverRole: "አሽከርካሪ",
     plateNumber: "የታርጋ ቁጥር",
     finesList: "የተቀጡ ዝርዝር",
-    printReport: "ሪፖርት አትም"
+    printReport: "ሪፖርት አትም",
+    workLocation: "የሚሰራበት ቦታ"
   }
 };
