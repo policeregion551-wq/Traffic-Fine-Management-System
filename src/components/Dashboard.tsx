@@ -79,8 +79,10 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
   const [policePassword, setPolicePassword] = useState('');
   const [policeWorkLocation, setPoliceWorkLocation] = useState('');
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [policeSearchQuery, setPoliceSearchQuery] = useState('');
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffSuccess, setStaffSuccess] = useState(false);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
@@ -120,11 +122,18 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
       const usersRef = collection(db, 'users');
       unsubscribeUsers = onSnapshot(usersRef, (snapshot) => {
         setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (err) => {
+        console.error("Users snapshot error:", err);
+        if (err.message.includes('permission')) {
+          setError("Admin Access Denied: Please check your account status.");
+        }
       });
 
       const staffRef = collection(db, 'staff');
       unsubscribeStaff = onSnapshot(staffRef, (snapshot) => {
         setStaffMembers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      }, (err) => {
+        console.error("Staff snapshot error:", err);
       });
 
       const nq = query(collection(db, 'notifications'), limit(10));
@@ -163,11 +172,27 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
         f.driverName?.toLowerCase().includes(q) || 
         f.driverEmail?.toLowerCase().includes(q) ||
         f.plateNumber?.toLowerCase().includes(q) ||
-        f.licenseNumber?.toLowerCase().includes(q)
+        f.licenseNumber?.toLowerCase().includes(q) ||
+        f.violationType?.toLowerCase().includes(q)
       );
     }
     return result;
   }, [fines, statusFilter, searchQuery]);
+
+  const filteredPoliceFines = React.useMemo(() => {
+    if (!selectedUser) return [];
+    let result = fines.filter(f => f.officerEmail === selectedUser.email);
+    if (policeSearchQuery) {
+      const q = policeSearchQuery.toLowerCase();
+      result = result.filter(f => 
+        f.driverName?.toLowerCase().includes(q) || 
+        f.driverEmail?.toLowerCase().includes(q) ||
+        f.plateNumber?.toLowerCase().includes(q) ||
+        f.licenseNumber?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [fines, selectedUser, policeSearchQuery]);
 
   const stats = {
     total: fines.length,
@@ -215,6 +240,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
   const handleRegisterPolice = async (e: React.FormEvent) => {
     e.preventDefault();
     setStaffLoading(true);
+    setRegistrationError(null);
     try {
       // Initialize a secondary app to create the user without logging out the admin
       const secondaryApp = initializeApp(firebaseConfig, 'Secondary');
@@ -246,7 +272,11 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
       setTimeout(() => setStaffSuccess(false), 3000);
     } catch (err: any) {
       console.error(err);
-      setError(err.message);
+      if (err.code === 'auth/email-already-in-use') {
+        setRegistrationError(t.emailAlreadyInUse);
+      } else {
+        setRegistrationError(err.message);
+      }
     } finally {
       setStaffLoading(false);
     }
@@ -530,7 +560,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {filteredFines.slice(0, 10).map((fine) => (
+                      {filteredFines.slice(0, searchQuery ? 100 : 10).map((fine) => (
                         <tr key={fine.id} className="hover:bg-slate-50 transition-colors group">
                           <td className="px-8 py-5">
                             <div className="flex items-center gap-3">
@@ -775,8 +805,18 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
 
               {/* Fine History for this Officer */}
               <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-                <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+                <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <h3 className="text-lg font-bold text-slate-900">{t.policeReport}</h3>
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder={t.searchPlaceholder}
+                      value={policeSearchQuery}
+                      onChange={(e) => setPoliceSearchQuery(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl py-2 pl-11 pr-4 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
@@ -789,33 +829,31 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {fines
-                        .filter(f => f.officerEmail === selectedUser.email)
-                        .map((fine) => (
-                          <tr key={fine.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-8 py-4">
-                              <p className="text-sm font-bold text-slate-900">{fine.driverName}</p>
-                              <p className="text-xs text-slate-500">{fine.plateNumber}</p>
-                            </td>
-                            <td className="px-8 py-4">
-                              <p className="text-sm font-black text-slate-900">{fine.amount.toLocaleString()} ETB</p>
-                            </td>
-                            <td className="px-8 py-4">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                                fine.status === 'paid' ? 'bg-green-100 text-green-700' : 
-                                fine.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
-                              }`}>
-                                {fine.status}
-                              </span>
-                            </td>
-                            <td className="px-8 py-4">
-                              <p className="text-xs text-slate-500">
-                                {fine.createdAt?.toDate ? fine.createdAt.toDate().toLocaleDateString() : new Date(fine.createdAt).toLocaleDateString()}
-                              </p>
-                            </td>
-                          </tr>
-                        ))}
-                      {fines.filter(f => f.officerEmail === selectedUser.email).length === 0 && (
+                      {filteredPoliceFines.map((fine) => (
+                        <tr key={fine.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-8 py-4">
+                            <p className="text-sm font-bold text-slate-900">{fine.driverName}</p>
+                            <p className="text-xs text-slate-500">{fine.plateNumber} • {fine.driverEmail}</p>
+                          </td>
+                          <td className="px-8 py-4">
+                            <p className="text-sm font-black text-slate-900">{fine.amount.toLocaleString()} ETB</p>
+                          </td>
+                          <td className="px-8 py-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                              fine.status === 'paid' ? 'bg-green-100 text-green-700' : 
+                              fine.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {fine.status}
+                            </span>
+                          </td>
+                          <td className="px-8 py-4">
+                            <p className="text-xs text-slate-500">
+                              {fine.createdAt?.toDate ? fine.createdAt.toDate().toLocaleDateString() : (fine.createdAt ? new Date(fine.createdAt).toLocaleDateString() : '-')}
+                            </p>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredPoliceFines.length === 0 && (
                         <tr>
                           <td colSpan={4} className="px-8 py-12 text-center">
                             <div className="flex flex-col items-center gap-2 text-slate-400">
@@ -911,6 +949,11 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
               >
                 {staffLoading ? "Registering..." : t.addOfficer}
               </button>
+              {registrationError && (
+                <p className="text-xs text-red-600 font-bold flex items-center gap-1 justify-center">
+                  <AlertCircle className="w-3 h-3" /> {registrationError}
+                </p>
+              )}
               {staffSuccess && (
                 <p className="text-xs text-green-600 font-bold flex items-center gap-1 justify-center">
                   <CheckCircle2 className="w-3 h-3" /> Officer registered successfully!
