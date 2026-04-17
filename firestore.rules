@@ -75,10 +75,9 @@ service cloud.firestore {
 
     function isPolice() {
       return isAuthenticated() &&
-        (request.auth.token.email == "policeregion551@gmail.com" ||
+        (isAdmin() || 
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'police' ||
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')));
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'police'));
     }
 
     function isValidEmail(email) {
@@ -97,10 +96,11 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'role']) &&
-             data.uid == request.auth.uid &&
+             data.uid is string &&
              data.email is string &&
              data.role in ['police', 'driver', 'admin'] &&
              isValidString(data.get('name', ''), 100) &&
+             data.get('name', '').size() > 0 &&
              isValidString(data.get('phoneNumber', ''), 20);
     }
 
@@ -128,8 +128,8 @@ service cloud.firestore {
       // Allow admins to read any profile
       allow read: if isAdmin();
       
-      // Allow users to create their own profile
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      // Allow users to create their own profile, or admins to create any profile
+      allow create: if (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
       
       // Users can update their own profile but cannot change their role unless admin
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
@@ -143,7 +143,11 @@ service cloud.firestore {
       // Admin and Police can read all
       // Drivers can only read fines issued to them
       allow read: if isAdmin() || isPolice() || 
-                  (isAuthenticated() && request.auth.token.email == resource.data.driverEmail);
+                  (isAuthenticated() && (
+                    request.auth.token.email == resource.data.driverEmail ||
+                    (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == resource.data.driverEmail)
+                  ));
       
       allow create: if isPolice() && isValidFine(request.resource.data) && isRecent(request.resource.data.createdAt);
       
