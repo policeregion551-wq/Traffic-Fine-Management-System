@@ -249,12 +249,23 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
       const userCredential = await createUserWithEmailAndPassword(secondaryAuth, policeEmail, policePassword);
       const uid = userCredential.user.uid;
 
+      // 1. Create the user profile
       await setDoc(doc(db, 'users', uid), {
         uid,
         email: policeEmail,
         name: policeName,
         workLocation: policeWorkLocation,
         role: 'police',
+        createdAt: new Date().toISOString()
+      });
+
+      // 2. Also add to 'staff' collection as a pre-authorized record (robust fallback)
+      await setDoc(doc(db, 'staff', uid), {
+        uid,
+        email: policeEmail,
+        name: policeName,
+        role: 'police',
+        workLocation: policeWorkLocation,
         createdAt: new Date().toISOString()
       });
 
@@ -956,7 +967,7 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
               )}
               {staffSuccess && (
                 <p className="text-xs text-green-600 font-bold flex items-center gap-1 justify-center">
-                  <CheckCircle2 className="w-3 h-3" /> Officer registered successfully!
+                  <CheckCircle2 className="w-3 h-3" /> {lang === 'en' ? 'Officer registered successfully!' : 'የፖሊስ አባሉ በተሳካ ሁኔታ ተመዝግቧል!'}
                 </p>
               )}
             </form>
@@ -1020,11 +1031,13 @@ export default function Dashboard({ userProfile, lang }: { userProfile: any, lan
                         </div>
                       </td>
                       <td className="px-8 py-5">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                           user.role === 'admin' ? 'bg-red-100 text-red-700' : 
                           user.role === 'police' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
                         }`}>
-                          {user.role}
+                          {user.role === 'admin' ? (lang === 'en' ? 'Admin' : 'አድሚን') : 
+                           user.role === 'police' ? (lang === 'en' ? 'Traffic Police' : 'የትራፊክ ፖሊስ') : 
+                           (lang === 'en' ? 'Driver' : 'አሽከርካሪ')}
                         </span>
                       </td>
                       <td className="px-8 py-5">
