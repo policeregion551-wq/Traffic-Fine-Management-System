@@ -81,7 +81,21 @@ export default function App() {
               await setDoc(doc(db, 'users', user.uid), updatedProfile);
               setUserProfile(updatedProfile);
             } else {
-              setUserProfile(data);
+              // Ensure role is synced with pre-registered staff data
+              const staffQuery = query(collection(db, 'staff'), where('email', '==', user.email));
+              const staffSnapshot = await getDocs(staffQuery);
+              if (!staffSnapshot.empty) {
+                const staffRole = staffSnapshot.docs[0].data().role;
+                if (data.role !== staffRole) {
+                  const updatedProfile = { ...data, role: staffRole };
+                  await setDoc(doc(db, 'users', user.uid), updatedProfile);
+                  setUserProfile(updatedProfile);
+                } else {
+                  setUserProfile(data);
+                }
+              } else {
+                setUserProfile(data);
+              }
             }
           } else {
             // Check if this email was pre-registered as police or admin in the 'staff' collection
