@@ -79,7 +79,8 @@ export const translations = {
     totalAmountCollected: "Total Amount Collected",
     officerDetails: "Officer Details",
     backToUsers: "Back to Users",
-    noFinesFound: "No fines found for this officer."
+    noFinesFound: "No fines found for this officer.",
+    emailAlreadyInUse: "This email is already registered."
   },
   am: {
     dashboard: "ዳሽቦርድ",
@@ -161,6 +162,7 @@ export const translations = {
     totalAmountCollected: "ጠቅላላ የተሰበሰበ ገንዘብ",
     officerDetails: "የፖሊሱ ዝርዝር መረጃ",
     backToUsers: "ወደ ተጠቃሚዎች ዝርዝር ተመለስ",
-    noFinesFound: "ለዚህ ፖሊስ የተመዘገበ ቅጣት የለም።"
+    noFinesFound: "ለዚህ ፖሊስ የተመዘገበ ቅጣት የለም።",
+    emailAlreadyInUse: "ይህ ኢሜል አስቀድሞ ተመዝግቧል።"
   }
 };
