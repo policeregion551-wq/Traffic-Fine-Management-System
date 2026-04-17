@@ -11,6 +11,7 @@ import {
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   updateProfile,
+  sendPasswordResetEmail,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -64,8 +65,9 @@ export default function App() {
 
   const t = translations[lang];
 
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'reset'>('login');
   const [authLoading, setAuthLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -148,6 +150,13 @@ export default function App() {
     const phoneNumber = formData.get('phoneNumber') as string;
 
     try {
+      if (authMode === 'reset') {
+        await sendPasswordResetEmail(auth, email);
+        setResetSuccess(true);
+        setError(null);
+        return;
+      }
+
       if (authMode === 'register') {
         if (selectedRole !== 'driver') {
           throw new Error(lang === 'en' ? "Only drivers can register themselves. Police and Admins must be registered by the system." : "አሽከርካሪዎች ብቻ ናቸው እራሳቸውን መመዝገብ የሚችሉት። ፖሊሶች እና አድሚኖች በሲስተሙ መመዝገብ አለባቸው።");
@@ -352,12 +361,28 @@ export default function App() {
                   <h2 className="text-xl font-bold text-slate-900">
                     {selectedRole === 'admin' ? t.admin : selectedRole === 'police' ? t.police : t.driverRole}
                   </h2>
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{authMode === 'login' ? t.signIn : t.createAccount}</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    {authMode === 'login' ? t.signIn : authMode === 'register' ? t.createAccount : t.resetPassword}
+                  </p>
                 </div>
               </div>
 
               <form onSubmit={handleAuth} className="space-y-4">
-                {authMode === 'register' && (
+                {authMode === 'reset' && resetSuccess ? (
+                  <div className="p-4 bg-green-50 text-green-700 rounded-2xl text-center space-y-4">
+                    <CheckCircle2 className="w-10 h-10 mx-auto" />
+                    <p className="text-sm font-medium">{t.resetEmailSent}</p>
+                    <button 
+                      type="button"
+                      onClick={() => { setAuthMode('login'); setResetSuccess(false); }}
+                      className="text-blue-600 font-bold hover:underline"
+                    >
+                      {t.backToLogin}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {authMode === 'register' && (
                   <>
                     <div>
                       <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.fullName}</label>
@@ -389,16 +414,29 @@ export default function App() {
                     className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.password}</label>
-                  <input 
-                    name="password"
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                </div>
+                {authMode !== 'reset' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 uppercase mb-1 ml-1">{t.password}</label>
+                    <input 
+                      name="password"
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                    {authMode === 'login' && selectedRole === 'driver' && (
+                      <div className="mt-2 text-right">
+                        <button 
+                          type="button"
+                          onClick={() => { setAuthMode('reset'); setError(null); }}
+                          className="text-xs font-bold text-blue-600 hover:text-blue-700"
+                        >
+                          {t.forgotPassword}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {error && (
                   <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl flex items-center gap-2">
@@ -411,11 +449,26 @@ export default function App() {
                   disabled={authLoading}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
                 >
-                  {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (authMode === 'login' ? t.signIn : t.createAccount)}
+                  {authLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                    authMode === 'login' ? t.signIn : 
+                    authMode === 'register' ? t.createAccount : t.sendResetLink
+                  )}
                 </button>
-              </form>
+
+                {authMode === 'reset' && (
+                  <button 
+                    type="button"
+                    onClick={() => { setAuthMode('login'); setError(null); }}
+                    className="w-full text-slate-400 font-bold py-2 text-xs hover:text-slate-600 transition-all"
+                  >
+                    {t.backToLogin}
+                  </button>
+                )}
+              </>
+              )}
+            </form>
               
-              {selectedRole === 'driver' && (
+              {selectedRole === 'driver' && authMode !== 'reset' && (
                 <div className="mt-6 text-center">
                   <button 
                     onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }}
