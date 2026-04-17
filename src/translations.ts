@@ -80,7 +80,12 @@ export const translations = {
     officerDetails: "Officer Details",
     backToUsers: "Back to Users",
     noFinesFound: "No fines found for this officer.",
-    emailAlreadyInUse: "This email is already registered."
+    emailAlreadyInUse: "This email is already registered.",
+    forgotPassword: "Forgot Password?",
+    resetPassword: "Reset Password",
+    sendResetLink: "Send Reset Link",
+    backToLogin: "Back to Login",
+    resetEmailSent: "Password reset link has been sent to your email."
   },
   am: {
     dashboard: "ዳሽቦርድ",
@@ -163,6 +168,11 @@ export const translations = {
     officerDetails: "የፖሊሱ ዝርዝር መረጃ",
     backToUsers: "ወደ ተጠቃሚዎች ዝርዝር ተመለስ",
     noFinesFound: "ለዚህ ፖሊስ የተመዘገበ ቅጣት የለም።",
-    emailAlreadyInUse: "ይህ ኢሜል አስቀድሞ ተመዝግቧል።"
+    emailAlreadyInUse: "ይህ ኢሜል አስቀድሞ ተመዝግቧልል",
+    forgotPassword: "የይለፍ ቃል ረስተዋል?",
+    resetPassword: "የይለፍ ቃል ቀይር",
+    sendResetLink: "የመቀየሪያ ሊንክ ላክ",
+    backToLogin: "ወደ መግቢያ ተመለስ",
+    resetEmailSent: "የይለፍ ቃል መቀየሪያ ሊንክ ወደ ኢሜልዎ ተልኳል።"
   }
 };
